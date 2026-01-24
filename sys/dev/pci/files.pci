@@ -687,6 +687,10 @@ file	dev/pci/if_rtw_pci.c		rtw_pci
 attach	rtwn at pci with rtwn_pci
 file	dev/pci/if_rtwn.c		rtwn_pci
 
+# Realtek 88xx
+attach	rtw88x at pci with rtw88x
+file	dev/pci/if_rtw88x.c			rtw88x
+
 # Ralink RT2500 PCI/Mini-PCI
 attach	ral at pci with ral_pci
 file	dev/pci/if_ral_pci.c		ral_pci

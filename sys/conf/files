@@ -399,6 +399,10 @@ file	dev/ic/rtw.c			rtw
 device	rtwn: ifnet, wlan, firmload
 file	dev/ic/rtwn.c			rtwn | urtwn
 
+# Realtek RTL8822B(e) 802.11
+device	rtw88x: ether, ifnet, ifmedia, wlan
+file	dev/ic/rtw8822b.c		rtw88x
+
 # Ralink RT2500/RT2600 802.11
 device	ral: ether, ifnet, ifmedia, firmload, wlan
 file	dev/ic/rt2560.c			ral

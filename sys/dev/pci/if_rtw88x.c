@@ -11,9 +11,9 @@
 struct rtw88x_softc {
 	struct device sc_dev;
 
-	/*bus_space_tag_t sc_st;
+	bus_space_tag_t sc_st;
 	bus_space_handle_t sc_sh;
-	bus_size_t sc_sz;*/
+	bus_size_t sc_sz;
 };
 
 struct cfdriver rtw88x_cd = {
@@ -47,19 +47,20 @@ const struct cfattach rtw88x_ca = {
 };
 
 void
-rtw88x_attach(struct device *parent, struct device *dev, void *aux)
+rtw88x_attach(struct device *parent, struct device *self, void *aux)
 {
-	/*int err;
+	int err;
+	struct rtw88x_softc *sc = (void *)self;
 	struct pci_attach_args *pa = aux;
-	pcireg_t reg, memtype;
+	pcireg_t /*reg,*/ memtype;
 
 	memtype = pci_mapreg_type(pa->pa_pc, pa->pa_tag, PCI_MAPREG_START);
 	err = pci_mapreg_map(pa, PCI_MAPREG_START, memtype, 0,
 	    &sc->sc_st, &sc->sc_sh, NULL, &sc->sc_sz, 0);
 	if (err) {
-		printf("%s: can't map mem space\n", DEVNAME(sc));
+		printf("%s: can't map mem space\n", self->dv_xname);
 		return;
-	}*/
+	}
 
 	printf(": ATTACHED\n");
 	//printf("%s: ATTACHED\n", DEVNAME(sc));

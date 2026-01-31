@@ -603,6 +603,7 @@ ral*	at cardbus?			# Ralink RT2500/RT2501/RT2600
 rtw*	at pci?				# Realtek 8180
 rtw*	at cardbus?			# Realtek 8180
 rtwn*	at pci?				# Realtek 8188CE/8192CE
+rtw88x*	at pci?				# Realtek 88xx
 pgt*	at pci?				# Prism54 Full-MAC
 pgt*	at cardbus?			# Prism54 Full-MAC
 malo*	at pci?				# Marvell Libertas

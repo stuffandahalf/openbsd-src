@@ -1,4 +1,4 @@
-/*	$OpenBSD: rde.h,v 1.337 2025/12/28 17:52:44 claudio Exp $ */
+/*	$OpenBSD: rde.h,v 1.340 2026/02/04 11:41:11 claudio Exp $ */
 
 /*
  * Copyright (c) 2003, 2004 Claudio Jeker <claudio@openbsd.org> and
@@ -495,9 +495,9 @@ aspath_origin(struct aspath *aspath)
 int	community_match(struct rde_community *, struct community *,
 	    struct rde_peer *);
 int	community_count(struct rde_community *, uint8_t type);
-int	community_set(struct rde_community *, struct community *,
+int	community_set(struct rde_community *, const struct community *,
 	    struct rde_peer *);
-void	community_delete(struct rde_community *, struct community *,
+void	community_delete(struct rde_community *, const struct community *,
 	    struct rde_peer *);
 
 int	community_add(struct rde_community *, int, struct ibuf *);
@@ -546,15 +546,19 @@ void		 prefix_evaluate_nexthop(struct prefix *, enum nexthop_state,
 		    enum nexthop_state);
 
 /* rde_filter.c */
-void	rde_apply_set(struct filter_set_head *, struct rde_peer *,
+void	rde_apply_set(const struct rde_filter_set *, struct rde_peer *,
 	    struct rde_peer *, struct filterstate *, u_int8_t);
+int	rde_l3vpn_import(struct rde_community *, struct l3vpn *);
+struct filter_rule     *rde_filter_dup(const struct filter_rule *);
 void	rde_filterstate_init(struct filterstate *);
 void	rde_filterstate_prep(struct filterstate *, struct prefix *);
 void	rde_filterstate_copy(struct filterstate *, struct filterstate *);
 void	rde_filterstate_set_vstate(struct filterstate *, uint8_t, uint8_t);
 void	rde_filterstate_clean(struct filterstate *);
+uint64_t	rde_filterset_calc_hash(const struct rde_filter_set *);
 int	rde_filter_skip_rule(struct rde_peer *, struct filter_rule *);
 int	rde_filter_equal(struct filter_head *, struct filter_head *);
+struct rde_filter_set	*rde_filterset_imsg_recv(struct imsg *);
 void	rde_filter_calc_skip_steps(struct filter_head *);
 enum filter_actions rde_filter(struct filter_head *, struct rde_peer *,
 	    struct rde_peer *, struct bgpd_addr *, uint8_t,
@@ -740,7 +744,7 @@ void		 nexthop_modify(struct nexthop *, enum action_types, uint8_t,
 void		 nexthop_link(struct prefix *);
 void		 nexthop_unlink(struct prefix *);
 void		 nexthop_update(struct kroute_nexthop *);
-struct nexthop	*nexthop_get(struct bgpd_addr *);
+struct nexthop	*nexthop_get(const struct bgpd_addr *);
 struct nexthop	*nexthop_ref(struct nexthop *);
 int		 nexthop_unref(struct nexthop *);
 

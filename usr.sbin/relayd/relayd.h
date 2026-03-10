@@ -1,4 +1,4 @@
-/*	$OpenBSD: relayd.h,v 1.276 2024/10/28 19:56:18 tb Exp $	*/
+/*	$OpenBSD: relayd.h,v 1.278 2026/03/02 19:28:01 rsadowski Exp $	*/
 
 /*
  * Copyright (c) 2006 - 2016 Reyk Floeter <reyk@openbsd.org>
@@ -402,6 +402,8 @@ union hashkey {
 #define F_HASHKEY		0x08000000
 #define F_AGENTX_TRAPONLY	0x10000000
 #define F_PFLOG			0x20000000
+#define F_PROXYV1		0x40000000
+#define F_PROXYV2		0x80000000
 
 #define F_BITS								\
 	"\10\01DISABLE\02BACKUP\03USED\04DOWN\05ADD\06DEL\07CHANGED"	\
@@ -1397,28 +1399,6 @@ void	 snmp_hosttrap(struct relayd *, struct table *, struct host *);
 void		shuffle_init(struct shuffle *);
 u_int16_t	shuffle_generate16(struct shuffle *);
 
-/* log.c */
-void	log_init(int, int);
-void	log_procinit(const char *);
-void	log_setverbose(int);
-int	log_getverbose(void);
-void	log_warn(const char *, ...)
-	    __attribute__((__format__ (printf, 1, 2)));
-void	log_warnx(const char *, ...)
-	    __attribute__((__format__ (printf, 1, 2)));
-void	log_info(const char *, ...)
-	    __attribute__((__format__ (printf, 1, 2)));
-void	log_debug(const char *, ...)
-	    __attribute__((__format__ (printf, 1, 2)));
-void	logit(int, const char *, ...)
-	    __attribute__((__format__ (printf, 2, 3)));
-void	vlog(int, const char *, va_list)
-	    __attribute__((__format__ (printf, 2, 0)));
-__dead void fatal(const char *, ...)
-	    __attribute__((__format__ (printf, 1, 2)));
-__dead void fatalx(const char *, ...)
-	    __attribute__((__format__ (printf, 1, 2)));
-
 /* proc.c */
 enum privsep_procid
 	    proc_getid(struct privsep_proc *, unsigned int, const char *);
@@ -1475,5 +1455,9 @@ int	 config_setrelay(struct relayd *, struct relay *);
 int	 config_getrelay(struct relayd *, struct imsg *);
 int	 config_getrelaytable(struct relayd *, struct imsg *);
 int	 config_getrelayfd(struct relayd *, struct imsg *);
+
+/* proxy_protocol.c */
+int	proxy_protocol_v1(struct rsession *, struct evbuffer *);
+int	proxy_protocol_v2(struct rsession *, struct evbuffer *);
 
 #endif /* RELAYD_H */

@@ -2,7 +2,7 @@
  * THIS FILE AUTOMATICALLY GENERATED.  DO NOT EDIT.
  *
  * generated from:
- *	OpenBSD: pcidevs,v 1.2122 2026/01/24 18:16:06 kettenis Exp 
+ *	OpenBSD: pcidevs,v 1.2124 2026/03/01 20:17:30 kettenis Exp 
  */
 /*	$NetBSD: pcidevs,v 1.30 1997/06/24 06:20:24 thorpej Exp $	*/
 
@@ -870,6 +870,7 @@
 #define	PCI_PRODUCT_AMD_16_CCP	0x1537		/* 16h Crypto */
 #define	PCI_PRODUCT_AMD_16_3X_RC	0x1566		/* 16h Root Complex */
 #define	PCI_PRODUCT_AMD_16_3X_HB	0x156b		/* 16h Host */
+#define	PCI_PRODUCT_AMD_1A_PSP	0x156e		/* 1Ah PSP 6.0 */
 #define	PCI_PRODUCT_AMD_15_6X_LINK	0x1570		/* 15h Link Cfg */
 #define	PCI_PRODUCT_AMD_15_6X_ADDR	0x1571		/* 15h Address Map */
 #define	PCI_PRODUCT_AMD_15_6X_DRAM	0x1572		/* 15h DRAM Cfg */
@@ -8986,6 +8987,7 @@
 #define	PCI_PRODUCT_REALTEK_RTL8402	0x5286		/* RTL8402 Card Reader */
 #define	PCI_PRODUCT_REALTEK_RTL8411B	0x5287		/* RTL8411B Card Reader */
 #define	PCI_PRODUCT_REALTEK_RTL8411	0x5289		/* RTL8411 Card Reader */
+#define	PCI_PRODUCT_REALTEK_RTS5765DL	0x5765		/* RTS5765DL */
 #define	PCI_PRODUCT_REALTEK_RT8029	0x8029		/* 8029 */
 #define	PCI_PRODUCT_REALTEK_RT8139D	0x8039		/* 8139D */
 #define	PCI_PRODUCT_REALTEK_RTL8125	0x8125		/* RTL8125 */

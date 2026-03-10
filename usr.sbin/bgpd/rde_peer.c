@@ -1,4 +1,4 @@
-/*	$OpenBSD: rde_peer.c,v 1.66 2026/02/03 12:25:16 claudio Exp $ */
+/*	$OpenBSD: rde_peer.c,v 1.70 2026/03/02 12:08:30 claudio Exp $ */
 
 /*
  * Copyright (c) 2019 Claudio Jeker <claudio@openbsd.org>
@@ -209,25 +209,30 @@ peer_add(uint32_t id, struct peer_config *p_conf, struct filter_head *rules)
 	return peer;
 }
 
-struct filter_head *
+struct rde_filter *
 peer_apply_out_filter(struct rde_peer *peer, struct filter_head *rules)
 {
-	struct filter_head *old;
-	struct filter_rule *fr, *new;
+	struct rde_filter *old, *new;
+	struct filter_rule *fr;
+	size_t count = 0;
 
 	old = peer->out_rules;
-	if ((peer->out_rules = malloc(sizeof(*peer->out_rules))) == NULL)
-		fatal(NULL);
-	TAILQ_INIT(peer->out_rules);
 
 	TAILQ_FOREACH(fr, rules, entry) {
 		if (rde_filter_skip_rule(peer, fr))
 			continue;
+		count++;
+	}
+	new = rde_filter_new(count);
 
-		new = rde_filter_dup(fr);
-		TAILQ_INSERT_TAIL(peer->out_rules, new, entry);
+	count = 0;
+	TAILQ_FOREACH(fr, rules, entry) {
+		if (rde_filter_skip_rule(peer, fr))
+			continue;
+		rde_filter_fill(new, count++, fr);
 	}
 
+	peer->out_rules = rde_filter_getcache(new);
 	return old;
 }
 
@@ -331,6 +336,8 @@ rde_generate_updates(struct rib_entry *re, struct prefix *newpath,
 	if (re->pq_mode != EVAL_NONE) {
 		peer = peer_get(re->pq_peer_id);
 		TAILQ_REMOVE(&peer->rib_pq_head, re, rib_queue);
+		rdemem.rde_rib_entry_count--;
+		peer->stats.rib_entry_count--;
 	}
 	if (newpath != NULL)
 		peer = prefix_peer(newpath);
@@ -339,6 +346,8 @@ rde_generate_updates(struct rib_entry *re, struct prefix *newpath,
 	re->pq_mode = mode;
 	re->pq_peer_id = peer->conf.id;
 	TAILQ_INSERT_TAIL(&peer->rib_pq_head, re, rib_queue);
+	rdemem.rde_rib_entry_count++;
+	peer->stats.rib_entry_count++;
 }
 
 void
@@ -352,6 +361,8 @@ peer_process_updates(struct rde_peer *peer, void *bula)
 	if (re == NULL)
 		return;
 	TAILQ_REMOVE(&peer->rib_pq_head, re, rib_queue);
+	rdemem.rde_rib_entry_count--;
+	peer->stats.rib_entry_count--;
 
 	mode = re->pq_mode;
 
@@ -425,11 +436,7 @@ peer_up(struct rde_peer *peer, struct session_up *sup)
 		 * There is a race condition when doing PEER_ERR -> PEER_DOWN.
 		 * So just do a full reset of the peer here.
 		 */
-		rib_dump_terminate(peer);
-		peer_imsg_flush(peer);
-		peer_flush(peer, AID_UNSPEC, monotime_clear());
-		peer->stats.prefix_cnt = 0;
-		peer->state = PEER_DOWN;
+		peer_down(peer);
 	}
 
 	/*
@@ -530,8 +537,12 @@ peer_delete(struct rde_peer *peer)
 	if (peer->state != PEER_DOWN)
 		peer_down(peer);
 
-	filterlist_free(peer->out_rules);
+	rde_filter_unref(peer->out_rules);
 	adjout_peer_free(peer);
+
+	TAILQ_CONCAT(&peerself->rib_pq_head, &peer->rib_pq_head, rib_queue);
+	peerself->stats.rib_entry_count += peer->stats.rib_entry_count;
+	peer->stats.rib_entry_count = 0;
 
 	RB_REMOVE(peer_tree, &peertable, peer);
 
@@ -739,6 +750,11 @@ peer_work_pending(void)
 void
 peer_imsg_push(struct rde_peer *peer, struct imsg *imsg)
 {
+	peer->stats.ibufq_msg_count++;
+	rdemem.rde_ibufq_msg_count++;
+	peer->stats.ibufq_payload_size += imsg_get_len(imsg);
+	rdemem.rde_ibufq_payload_size += imsg_get_len(imsg);
+
 	imsg_ibufq_push(peer->ibufq, imsg);
 }
 
@@ -753,6 +769,10 @@ peer_imsg_pop(struct rde_peer *peer, struct imsg *imsg)
 	case 0:
 		return 0;
 	case 1:
+		peer->stats.ibufq_msg_count--;
+		rdemem.rde_ibufq_msg_count--;
+		peer->stats.ibufq_payload_size -= imsg_get_len(imsg);
+		rdemem.rde_ibufq_payload_size -= imsg_get_len(imsg);
 		return 1;
 	default:
 		fatal("imsg_ibufq_pop");
@@ -766,4 +786,9 @@ void
 peer_imsg_flush(struct rde_peer *peer)
 {
 	ibufq_flush(peer->ibufq);
+
+	rdemem.rde_ibufq_msg_count -= peer->stats.ibufq_msg_count;
+	rdemem.rde_ibufq_payload_size -= peer->stats.ibufq_payload_size;
+	peer->stats.ibufq_msg_count = 0;
+	peer->stats.ibufq_payload_size = 0;
 }

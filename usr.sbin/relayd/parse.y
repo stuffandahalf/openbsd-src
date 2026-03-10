@@ -1,4 +1,4 @@
-/*	$OpenBSD: parse.y,v 1.258 2024/10/28 19:56:18 tb Exp $	*/
+/*	$OpenBSD: parse.y,v 1.261 2026/03/03 19:51:41 rsadowski Exp $	*/
 
 /*
  * Copyright (c) 2007 - 2014 Reyk Floeter <reyk@openbsd.org>
@@ -57,6 +57,7 @@
 
 #include "relayd.h"
 #include "http.h"
+#include "log.h"
 
 TAILQ_HEAD(files, file)		 files = TAILQ_HEAD_INITIALIZER(files);
 static struct file {
@@ -179,13 +180,13 @@ typedef struct {
 %token	TIMEOUT TLS TO ROUTER RTLABEL TRANSPARENT URL WITH TTL RTABLE
 %token	MATCH PARAMS RANDOM LEASTSTATES SRCHASH KEY CERTIFICATE PASSWORD ECDHE
 %token	EDH TICKETS CONNECTION CONNECTIONS CONTEXT ERRORS STATE CHANGES CHECKS
-%token	WEBSOCKETS PFLOG CLIENT
+%token	WEBSOCKETS PFLOG CLIENT PROXYPROTO V1 V2
 %token	<v.string>	STRING
 %token  <v.number>	NUMBER
 %type	<v.string>	context hostname interface table value path
 %type	<v.number>	http_type loglevel quick
 %type	<v.number>	dstmode flag forwardmode retry
-%type	<v.number>	opttls opttlsclient
+%type	<v.number>	opttls opttlsclient optproxyproto
 %type	<v.number>	redirect_proto relay_proto match pflog
 %type	<v.number>	action ruleaf key_option
 %type	<v.port>	port
@@ -921,8 +922,8 @@ tablecheck	: ICMP			{ table->conf.check = CHECK_ICMP; }
 				YYERROR;
 			}
 			if (asprintf(&table->sendbuf,
-			    "HEAD %s HTTP/1.%c\r\n%s\r\n",
-			    $2, strlen($3) ? '1' : '0', $3) == -1)
+			    "HEAD %s HTTP/1.%c\r\nUser-Agent: %s\r\n%s\r\n",
+			    $2, strlen($3) ? '1' : '0', RELAYD_SERVERNAME, $3) == -1)
 				fatal("asprintf");
 			free($2);
 			free($3);
@@ -936,8 +937,8 @@ tablecheck	: ICMP			{ table->conf.check = CHECK_ICMP; }
 			}
 			table->conf.check = CHECK_HTTP_DIGEST;
 			if (asprintf(&table->sendbuf,
-			    "GET %s HTTP/1.%c\r\n%s\r\n",
-			    $2, strlen($3) ? '1' : '0', $3) == -1)
+			    "GET %s HTTP/1.%c\r\nUser-Agent: %s\r\n%s\r\n",
+			    $2, strlen($3) ? '1' : '0', RELAYD_SERVERNAME, $3) == -1)
 				fatal("asprintf");
 			free($2);
 			free($3);
@@ -1101,6 +1102,11 @@ proto		: relay_proto PROTO STRING	{
 			}
 			TAILQ_INSERT_TAIL(conf->sc_protos, proto, entry);
 		}
+		;
+
+optproxyproto	: /* empty */	{ $$ = 0; }
+		| PROXYPROTO V1	{ $$ = F_PROXYV1; }
+		| PROXYPROTO V2 { $$ = F_PROXYV2; }
 		;
 
 protopts_n	: /* empty */
@@ -1946,7 +1952,7 @@ relayoptsl	: LISTEN ON STRING port opttls {
 			tableport = h->port.val[0];
 			host_free(&al);
 		}
-		| forwardmode opttlsclient TO forwardspec dstaf {
+		| forwardmode opttlsclient TO forwardspec dstaf optproxyproto {
 			rlay->rl_conf.fwdmode = $1;
 			if ($1 == FWD_ROUTE) {
 				yyerror("no route for relays");
@@ -1956,6 +1962,8 @@ relayoptsl	: LISTEN ON STRING port opttls {
 				rlay->rl_conf.flags |= F_TLSCLIENT;
 				conf->sc_conf.flags |= F_TLSCLIENT;
 			}
+
+			rlay->rl_conf.flags |= $6;
 		}
 		| SESSION TIMEOUT NUMBER		{
 			if ((rlay->rl_conf.timeout.tv_sec = $3) < 0) {
@@ -1983,6 +1991,7 @@ relayoptsl	: LISTEN ON STRING port opttls {
 				free($2);
 				YYERROR;
 			}
+
 			p->flags |= F_USED;
 			rlay->rl_conf.proto = p->id;
 			rlay->rl_proto = p;
@@ -2479,6 +2488,7 @@ lookup(char *s)
 		{ "prefork",		PREFORK },
 		{ "priority",		PRIORITY },
 		{ "protocol",		PROTO },
+		{ "proxy-protocol",	PROXYPROTO },
 		{ "query",		QUERYSTR },
 		{ "quick",		QUICK },
 		{ "random",		RANDOM },
@@ -2518,6 +2528,8 @@ lookup(char *s)
 		{ "transparent",	TRANSPARENT },
 		{ "ttl",		TTL },
 		{ "url",		URL },
+		{ "v1",			V1 },
+		{ "v2",			V2 },
 		{ "value",		VALUE },
 		{ "websockets",		WEBSOCKETS },
 		{ "with",		WITH }

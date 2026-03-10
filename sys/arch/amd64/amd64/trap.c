@@ -1,4 +1,4 @@
-/*	$OpenBSD: trap.c,v 1.116 2025/11/26 13:48:57 sf Exp $	*/
+/*	$OpenBSD: trap.c,v 1.118 2026/03/08 17:07:31 deraadt Exp $	*/
 /*	$NetBSD: trap.c,v 1.2 2003/05/04 23:51:56 fvdl Exp $	*/
 
 /*-
@@ -437,6 +437,14 @@ vctrap(struct trapframe *frame, int user, int *sig, int *code)
 		}
 		break;
 	    }
+	case SVM_VMEXIT_VMMCALL:
+		if (user) {
+			*sig = SIGILL;
+			*code = ILL_PRVOPC;
+			return 0;	/* not allowed from userspace */
+		}
+		panic("unexpected VMMCALL in kernelspace");
+		/* NOTREACHED */
 	case SVM_VMEXIT_NPF:
 		if (user) {
 			*sig = SIGBUS;
@@ -500,7 +508,7 @@ kerntrap(struct trapframe *frame)
 	uint64_t cr2 = rcr2();
 
 	verify_smap(__func__);
-	uvmexp.traps++;
+	atomic_inc_int(&uvmexp.traps);
 	debug_trap(frame, curproc, type);
 
 	switch (type) {
@@ -572,7 +580,7 @@ usertrap(struct trapframe *frame)
 	int sig, code;
 
 	verify_smap(__func__);
-	uvmexp.traps++;
+	atomic_inc_int(&uvmexp.traps);
 	debug_trap(frame, p, type);
 
 	p->p_md.md_regs = frame;
@@ -731,11 +739,11 @@ ast(struct trapframe *frame)
 {
 	struct proc *p = curproc;
 
-	uvmexp.traps++;
+	atomic_inc_int(&uvmexp.traps);
 	KASSERT(!KERNELMODE(frame->tf_cs, frame->tf_rflags));
 	p->p_md.md_regs = frame;
 	refreshcreds(p);
-	uvmexp.softs++;
+	atomic_inc_int(&uvmexp.softs);
 	mi_ast(p, curcpu()->ci_want_resched);
 	userret(p);
 }
@@ -754,7 +762,7 @@ syscall(struct trapframe *frame)
 	register_t code, *args, rval[2];
 
 	verify_smap(__func__);
-	uvmexp.syscalls++;
+	atomic_inc_int(&uvmexp.syscalls);
 	p = curproc;
 
 	if (verify_pkru(p)) {

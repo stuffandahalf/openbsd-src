@@ -1,4 +1,4 @@
-/* $OpenBSD: sshd-auth.c,v 1.11 2026/02/06 01:24:36 djm Exp $ */
+/* $OpenBSD: sshd-auth.c,v 1.13 2026/03/02 02:40:15 djm Exp $ */
 /*
  * SSH2 implementation:
  * Privilege Separation:
@@ -41,6 +41,7 @@
 #include <netdb.h>
 #include <paths.h>
 #include <pwd.h>
+#include <grp.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -766,6 +767,14 @@ do_ssh2_kex(struct ssh *ssh)
 	    options.ciphers, options.macs, compression, hkalgs);
 
 	free(hkalgs);
+
+	if ((r = kex_exchange_identification(ssh, -1,
+	    options.version_addendum)) != 0)
+		sshpkt_fatal(ssh, r, "banner exchange");
+	mm_sshkey_setcompat(ssh); /* tell monitor */
+
+	if ((ssh->compat & SSH_BUG_NOREKEY))
+		debug("client does not support rekeying");
 
 	/* start key exchange */
 	if ((r = kex_setup(ssh, myproposal)) != 0)

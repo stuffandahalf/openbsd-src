@@ -2,7 +2,7 @@
  * THIS FILE AUTOMATICALLY GENERATED.  DO NOT EDIT.
  *
  * generated from:
- *	OpenBSD: pcidevs,v 1.2122 2026/01/24 18:16:06 kettenis Exp 
+ *	OpenBSD: pcidevs,v 1.2124 2026/03/01 20:17:30 kettenis Exp 
  */
 
 /*	$NetBSD: pcidevs,v 1.30 1997/06/24 06:20:24 thorpej Exp $	*/
@@ -1706,6 +1706,10 @@ static const struct pci_known_product pci_known_products[] = {
 	{
 	    PCI_VENDOR_AMD, PCI_PRODUCT_AMD_16_3X_HB,
 	    "16h Host",
+	},
+	{
+	    PCI_VENDOR_AMD, PCI_PRODUCT_AMD_1A_PSP,
+	    "1Ah PSP 6.0",
 	},
 	{
 	    PCI_VENDOR_AMD, PCI_PRODUCT_AMD_15_6X_LINK,
@@ -32482,6 +32486,10 @@ static const struct pci_known_product pci_known_products[] = {
 	{
 	    PCI_VENDOR_REALTEK, PCI_PRODUCT_REALTEK_RTL8411,
 	    "RTL8411 Card Reader",
+	},
+	{
+	    PCI_VENDOR_REALTEK, PCI_PRODUCT_REALTEK_RTS5765DL,
+	    "RTS5765DL",
 	},
 	{
 	    PCI_VENDOR_REALTEK, PCI_PRODUCT_REALTEK_RT8029,

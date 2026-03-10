@@ -1,4 +1,4 @@
-/*	$OpenBSD: server_http.c,v 1.158 2026/02/02 13:37:33 claudio Exp $	*/
+/*	$OpenBSD: server_http.c,v 1.161 2026/03/02 19:24:58 rsadowski Exp $	*/
 
 /*
  * Copyright (c) 2020 Matthias Pressfreund <mpfr@fn.de>
@@ -42,6 +42,7 @@
 
 #include "httpd.h"
 #include "http.h"
+#include "log.h"
 #include "patterns.h"
 
 static int	 server_httpmethod_cmp(const void *, const void *);
@@ -70,12 +71,6 @@ server_http(void)
 	qsort(http_errors, sizeof(http_errors) /
 	    sizeof(http_errors[0]) - 1,
 	    sizeof(http_errors[0]), server_httperror_cmp);
-}
-
-void
-server_http_init(struct server *srv)
-{
-	/* nothing */
 }
 
 int
@@ -385,16 +380,6 @@ server_read_http(struct bufferevent *bev, void *arg)
 
 		} else if (desc->http_method != HTTP_METHOD_NONE &&
 		    strcasecmp("Content-Length", key) == 0) {
-			if (desc->http_method == HTTP_METHOD_TRACE ||
-			    desc->http_method == HTTP_METHOD_CONNECT) {
-				/*
-				 * These method should not have a body
-				 * and thus no Content-Length header.
-				 */
-				server_abort_http(clt, 400, "malformed");
-				goto abort;
-			}
-
 			/*
 			 * Need to read data from the client after the
 			 * HTTP header.
@@ -432,6 +417,11 @@ server_read_http(struct bufferevent *bev, void *arg)
 
 		switch (desc->http_method) {
 		case HTTP_METHOD_CONNECT:
+			/* No body allowed */
+			if (clt->clt_toread > 0 || desc->http_chunked) {
+				server_abort_http(clt, 400, "malformed");
+				return;
+			}
 			/* Data stream */
 			clt->clt_toread = TOREAD_UNLIMITED;
 			bev->readcb = server_read;
@@ -441,6 +431,14 @@ server_read_http(struct bufferevent *bev, void *arg)
 		/* WebDAV methods */
 		case HTTP_METHOD_COPY:
 		case HTTP_METHOD_MOVE:
+			/*
+			 * These method should not have a body and thus no
+			 * Content-Length or Transfer-Encoding: chunked header.
+			 */
+			if (clt->clt_toread > 0 || desc->http_chunked) {
+				server_abort_http(clt, 400, "malformed");
+				return;
+			}
 			clt->clt_toread = 0;
 			break;
 		case HTTP_METHOD_DELETE:
@@ -478,6 +476,7 @@ server_read_http(struct bufferevent *bev, void *arg)
 				/* 7. of RFC 9112 Section 6.3 */
 				clt->clt_toread = 0;
 			break;
+		case HTTP_METHOD_TRACE:
 		default:
 			server_abort_http(clt, 405, "method not allowed");
 			return;

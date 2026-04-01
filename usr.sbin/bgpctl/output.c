@@ -1,4 +1,4 @@
-/*	$OpenBSD: output.c,v 1.72 2026/03/05 21:30:56 claudio Exp $ */
+/*	$OpenBSD: output.c,v 1.74 2026/03/31 09:32:12 claudio Exp $ */
 
 /*
  * Copyright (c) 2003 Henning Brauer <henning@openbsd.org>
@@ -246,14 +246,14 @@ show_neighbor_msgstats(struct peer *p)
 	    p->stats.refresh_sent_req, p->stats.refresh_rcvd_req);
 	printf("  %-15s %10llu %10llu\n", "Begin-of-RR",
 	    p->stats.refresh_sent_borr, p->stats.refresh_rcvd_borr);
-	printf("  %-15s %10llu %10llu\n", "End-of-RR",
+	printf("  %-15s %10llu %10llu\n\n", "End-of-RR",
 	    p->stats.refresh_sent_eorr, p->stats.refresh_rcvd_eorr);
 
 	printf("  Queue statistics:\n");
 	printf("  %-15s %-10s %-10s\n", "", "Count", "Size");
 	printf("  %-15s %10llu %10llu\n", "ibuf queue",
 	    p->stats.ibufq_msg_count, p->stats.ibufq_payload_size);
-	printf("  %-15s %10llu %-10s\n", "rib queue",
+	printf("  %-15s %10llu %10s\n", "rib queue",
 	    p->stats.rib_entry_count, "-");
 }
 
@@ -1114,6 +1114,10 @@ show_rib_mem(struct rde_memstats *stats)
 	    sizeof(struct pend_prefix)));
 	printf("%10lld extended bitmaps using %s of memory\n",
 	    stats->bitmap_cnt, fmt_mem(stats->bitmap_size));
+	printf("%10lld hash tables using %s of memory\n",
+	    stats->hash_cnt, fmt_mem(stats->hash_size));
+	printf("\t   and holding %lld references\n",
+	    stats->hash_refs);
 	printf("%10lld filters using %s of memory\n",
 	    stats->filter_cnt, fmt_mem(stats->filter_size));
 	printf("\t   and holding %lld references\n",
@@ -1138,7 +1142,7 @@ show_rib_mem(struct rde_memstats *stats)
 	    stats->rib_cnt * sizeof(struct rib_entry) +
 	    stats->path_cnt * sizeof(struct rde_aspath) +
 	    stats->aspath_size + stats->attr_cnt * sizeof(struct attr) +
-	    stats->attr_data + stats->bitmap_size));
+	    stats->attr_data + stats->bitmap_size + stats->hash_size));
 	printf("Sets and filters using %s of memory\n",
 	    fmt_mem(stats->aset_size + stats->pset_size + stats->aspa_size +
 	    stats->filter_set_size));

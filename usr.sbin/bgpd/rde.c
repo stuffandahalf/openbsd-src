@@ -1,4 +1,4 @@
-/*	$OpenBSD: rde.c,v 1.689 2026/03/06 13:10:14 claudio Exp $ */
+/*	$OpenBSD: rde.c,v 1.691 2026/03/19 12:44:23 claudio Exp $ */
 
 /*
  * Copyright (c) 2003, 2004 Henning Brauer <henning@openbsd.org>
@@ -398,6 +398,52 @@ rde_main(int debug, int verbose)
 	exit(0);
 }
 
+static void
+rde_hash_stats(long long *cnt, long long *size, long long *refs)
+{
+	struct ch_stats stats;
+
+	attr_stats(&stats);
+	*cnt = stats.cs_num_tables;
+	*size = stats.cs_size_tables + stats.cs_size_extendible;
+	*refs = stats.cs_num_elm;
+
+	path_stats(&stats);
+	*cnt += stats.cs_num_tables;
+	*size += stats.cs_size_tables + stats.cs_size_extendible;
+	*refs += stats.cs_num_elm;
+
+	communities_stats(&stats);
+	*cnt += stats.cs_num_tables;
+	*size += stats.cs_size_tables + stats.cs_size_extendible;
+	*refs += stats.cs_num_elm;
+
+	rde_filtertable_stats(&stats);
+	*cnt += stats.cs_num_tables;
+	*size += stats.cs_size_tables + stats.cs_size_extendible;
+	*refs += stats.cs_num_elm;
+
+	rde_filterset_stats(&stats);
+	*cnt += stats.cs_num_tables;
+	*size += stats.cs_size_tables + stats.cs_size_extendible;
+	*refs += stats.cs_num_elm;
+
+	pend_attr_stats(&stats);
+	*cnt += stats.cs_num_tables;
+	*size += stats.cs_size_tables + stats.cs_size_extendible;
+	*refs += stats.cs_num_elm;
+
+	pend_prefix_stats(&stats);
+	*cnt += stats.cs_num_tables;
+	*size += stats.cs_size_tables + stats.cs_size_extendible;
+	*refs += stats.cs_num_elm;
+
+	adjout_attr_stats(&stats);
+	*cnt += stats.cs_num_tables;
+	*size += stats.cs_size_tables + stats.cs_size_extendible;
+	*refs += stats.cs_num_elm;
+}
+
 struct network_config	netconf_s, netconf_p;
 struct filterstate	netconf_state;
 struct rde_filter_set	*session_set, *parent_set;
@@ -743,6 +789,8 @@ badnetdel:
 		case IMSG_CTL_SHOW_RIB_MEM:
 			bitmap_get_stats(&rdemem.bitmap_cnt,
 			    &rdemem.bitmap_size);
+			rde_hash_stats(&rdemem.hash_cnt,
+			    &rdemem.hash_size, &rdemem.hash_refs);
 			imsg_compose(ibuf_se_ctl, IMSG_CTL_SHOW_RIB_MEM, 0,
 			    pid, -1, &rdemem, sizeof(rdemem));
 			break;
@@ -855,7 +903,6 @@ rde_dispatch_imsg_parent(struct imsgbuf *imsgbuf)
 	static struct flowspec	*curflow;
 	struct imsg		 imsg;
 	struct ibuf		 ibuf;
-	struct bgpd_config	 tconf;
 	struct filterstate	 state;
 	struct kroute_nexthop	 knext;
 	struct mrt		 xmrt;
@@ -1042,14 +1089,14 @@ rde_dispatch_imsg_parent(struct imsgbuf *imsgbuf)
 			curflow = NULL;
 			break;
 		case IMSG_RECONF_CONF:
-			if (imsg_get_data(&imsg, &tconf, sizeof(tconf)) == -1)
-				fatalx("IMSG_RECONF_CONF bad len");
+			nconf = new_config();
+			if (imsg_recv_config(&imsg, nconf) == -1)
+				fatal("imsg_recv_config");
+
 			out_rules_tmp = calloc(1, sizeof(struct filter_head));
 			if (out_rules_tmp == NULL)
 				fatal(NULL);
 			TAILQ_INIT(out_rules_tmp);
-			nconf = new_config();
-			copy_config(nconf, &tconf);
 
 			for (rid = 0; rid < rib_size; rid++) {
 				if ((rib = rib_byid(rid)) == NULL)

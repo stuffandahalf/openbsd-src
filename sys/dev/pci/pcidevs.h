@@ -2,7 +2,7 @@
  * THIS FILE AUTOMATICALLY GENERATED.  DO NOT EDIT.
  *
  * generated from:
- *	OpenBSD: pcidevs,v 1.2124 2026/03/01 20:17:30 kettenis Exp 
+ *	OpenBSD: pcidevs,v 1.2129 2026/03/19 22:31:02 kn Exp 
  */
 /*	$NetBSD: pcidevs,v 1.30 1997/06/24 06:20:24 thorpej Exp $	*/
 
@@ -2789,6 +2789,9 @@
 /* c't Magazin products */
 #define	PCI_PRODUCT_C4T_GPPCI	0x6773		/* GPPCI */
 
+/* Cadence products */
+#define	PCI_PRODUCT_CADENCE_CIX_PCIE	0x0100		/* PCIe */
+
 /* Cavium products */
 #define	PCI_PRODUCT_CAVIUM_NITROX	0x0001		/* NITROX XL */
 #define	PCI_PRODUCT_CAVIUM_NITROX_LITE	0x0003		/* NITROX Lite */
@@ -3000,6 +3003,7 @@
 
 /* Crucial products */
 #define	PCI_PRODUCT_CRUCIAL_P5PLUS	0x5407		/* P5 Plus */
+#define	PCI_PRODUCT_CRUCIAL_P310	0x5427		/* P310 */
 
 /* Cyclades products */
 #define	PCI_PRODUCT_CYCLADES_CYCLOMY_1	0x0100		/* Cyclom-Y below 1M */
@@ -4096,7 +4100,7 @@
 #define	PCI_PRODUCT_INTEL_82577LM	0x10ea		/* 82577LM */
 #define	PCI_PRODUCT_INTEL_82577LC	0x10eb		/* 82577LC */
 #define	PCI_PRODUCT_INTEL_82598EB_CX4_DUAL	0x10ec		/* 82598EB */
-#define	PCI_PRODUCT_INTEL_82599VF	0x10ed		/* 82599 */
+#define	PCI_PRODUCT_INTEL_82599VF	0x10ed		/* 82599 VF */
 #define	PCI_PRODUCT_INTEL_82578DM	0x10ef		/* 82578DM */
 #define	PCI_PRODUCT_INTEL_82578DC	0x10f0		/* 82578DC */
 #define	PCI_PRODUCT_INTEL_82598_DA_DUAL	0x10f1		/* 82598 */
@@ -6382,6 +6386,7 @@
 #define	PCI_PRODUCT_INTEL_ARL_U_PCIE_6	0x773d		/* Core Ultra PCIE */
 #define	PCI_PRODUCT_INTEL_ARL_U_PCIE_7	0x773e		/* Core Ultra PCIE */
 #define	PCI_PRODUCT_INTEL_ARL_U_PCIE_8	0x773f		/* Core Ultra PCIE */
+#define	PCI_PRODUCT_INTEL_WL_22500_18	0x7740		/* Wi-Fi AX211 */
 #define	PCI_PRODUCT_INTEL_ARL_U_ISH	0x7745		/* Core Ultra ISH */
 #define	PCI_PRODUCT_INTEL_ARL_U_GSPI_2	0x7746		/* Core Ultra GSPI */
 #define	PCI_PRODUCT_INTEL_ARL_U_THC_0_1	0x7748		/* Core Ultra THC */
@@ -9081,6 +9086,7 @@
 
 /* Rockchip products */
 #define	PCI_PRODUCT_ROCKCHIP_RK3399	0x0100		/* RK3399 */
+#define	PCI_PRODUCT_ROCKCHIP_RK3528	0x3528		/* RK3528 */
 #define	PCI_PRODUCT_ROCKCHIP_RK3566	0x3566		/* RK3566 */
 #define	PCI_PRODUCT_ROCKCHIP_RK3588	0x3588		/* RK3588 */
 

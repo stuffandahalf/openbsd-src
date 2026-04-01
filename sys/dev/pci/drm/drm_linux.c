@@ -1,4 +1,4 @@
-/*	$OpenBSD: drm_linux.c,v 1.132 2026/03/09 00:58:17 jsg Exp $	*/
+/*	$OpenBSD: drm_linux.c,v 1.134 2026/03/31 08:54:14 jsg Exp $	*/
 /*
  * Copyright (c) 2013 Jonathan Gray <jsg@openbsd.org>
  * Copyright (c) 2015, 2016 Mark Kettenis <kettenis@openbsd.org>
@@ -49,7 +49,6 @@
 #include <linux/notifier.h>
 #include <linux/backlight.h>
 #include <linux/shrinker.h>
-#include <linux/fb.h>
 #include <linux/xarray.h>
 #include <linux/interval_tree.h>
 #include <linux/kthread.h>
@@ -57,6 +56,8 @@
 #include <linux/sync_file.h>
 #include <linux/suspend.h>
 #include <linux/slab.h>
+#include <linux/seq_buf.h>
+#include <linux/platform_device.h>
 
 #include <drm/drm_device.h>
 #include <drm/drm_connector.h>
@@ -299,7 +300,7 @@ kthread_run(int (*func)(void *), void *data, const char *name)
 }
 
 struct kthread_worker *
-kthread_create_worker(unsigned int flags, const char *fmt, ...)
+kthread_run_worker(unsigned int flags, const char *fmt, ...)
 {
 	char name[MAXCOMLEN+1];
 	va_list ap;
@@ -735,6 +736,20 @@ is_vmalloc_addr(const void *p)
 		return false;
 }
 
+void *
+vmemdup_array_user(const void *src, size_t n, size_t size)
+{
+	void *p = kvmalloc_array(n, size, GFP_KERNEL);
+	if (p == NULL)
+		return ERR_PTR(-ENOMEM);
+
+	if (copyin(src, p, n * size) != 0) {
+		free(p, M_DRM, n * size);
+		return ERR_PTR(-EFAULT);
+	}
+	return (p);
+}
+
 void
 print_hex_dump(const char *level, const char *prefix_str, int prefix_type,
     int rowsize, int groupsize, const void *buf, size_t len, bool ascii)
@@ -942,14 +957,22 @@ ida_init(struct ida *ida)
 void
 ida_destroy(struct ida *ida)
 {
+	int s = spltty();
 	idr_destroy(&ida->idr);
+	splx(s);
 }
 
 /* [start, end] */
 int
 ida_alloc_range(struct ida *ida, unsigned int start, unsigned int end, gfp_t gfp)
 {
-	return idr_alloc(&ida->idr, NULL, start, end + 1, gfp);
+	int r, s;
+
+	s = spltty();
+	r = idr_alloc(&ida->idr, NULL, start, end + 1, gfp);
+	splx(s);
+
+	return r;
 }
 
 int
@@ -967,7 +990,9 @@ ida_alloc_max(struct ida *ida, unsigned int max, gfp_t gfp)
 void
 ida_free(struct ida *ida, unsigned int id)
 {
+	int s = spltty();
 	idr_remove(&ida->idr, id);
+	splx(s);
 }
 
 int
@@ -1816,6 +1841,28 @@ dma_fence_is_signaled_locked(struct dma_fence *fence)
 	return false;
 }
 
+int
+dma_fence_get_status_locked(struct dma_fence *fence)
+{
+	if (dma_fence_is_signaled_locked(fence) == false)
+		return 0;
+	if (fence->error == 0)
+		return 1;
+	return fence->error;
+}
+
+int
+dma_fence_get_status(struct dma_fence *fence)
+{
+	int r;
+
+	mtx_enter(fence->lock);
+	r = dma_fence_get_status_locked(fence);
+	mtx_leave(fence->lock);
+
+	return r;
+}
+
 ktime_t
 dma_fence_timestamp(struct dma_fence *fence)
 {
@@ -1877,6 +1924,14 @@ dma_fence_init(struct dma_fence *fence, const struct dma_fence_ops *ops,
 	fence->error = 0;
 	kref_init(&fence->refcount);
 	INIT_LIST_HEAD(&fence->cb_list);
+}
+
+void
+dma_fence_init64(struct dma_fence *fence, const struct dma_fence_ops *ops,
+    struct mutex *lock, uint64_t context, uint64_t seqno)
+{
+	dma_fence_init(fence, ops, lock, context, seqno);
+	set_bit(DMA_FENCE_FLAG_SEQ64_BIT, &fence->flags);
 }
 
 int
@@ -2313,7 +2368,7 @@ dma_fence_chain_init(struct dma_fence_chain *chain, struct dma_fence *prev,
 
 	/* if prev is a chain */
 	if (to_dma_fence_chain(prev) != NULL) {
-		if (__dma_fence_is_later(seqno, prev->seqno, prev->ops)) {
+		if (__dma_fence_is_later(prev, seqno, prev->seqno)) {
 			chain->prev_seqno = prev->seqno;
 			context = prev->context;
 		} else {
@@ -2326,7 +2381,7 @@ dma_fence_chain_init(struct dma_fence_chain *chain, struct dma_fence *prev,
 		context = dma_fence_context_alloc(1);
 	}
 
-	dma_fence_init(&chain->base, &dma_fence_chain_ops, &chain->lock,
+	dma_fence_init64(&chain->base, &dma_fence_chain_ops, &chain->lock,
 	    context, seqno);
 }
 
@@ -2469,7 +2524,6 @@ const struct dma_fence_ops dma_fence_chain_ops = {
 	.enable_signaling = dma_fence_chain_enable_signaling,
 	.signaled = dma_fence_chain_signaled,
 	.release = dma_fence_chain_release,
-	.use_64bit_seqno = true,
 };
 
 bool
@@ -3264,8 +3318,6 @@ kfree_const(const void *addr)
         kfree(addr);
 }
 
-#include <linux/platform_device.h>
-
 bus_dma_tag_t
 dma_tag_lookup(struct device *dev)
 {
@@ -3510,12 +3562,36 @@ component_master_add_with_match(struct device *dev,
 	return 0;
 }
 
+void
+seq_buf_printf(struct seq_buf *s, const char *fmt, ...)
+{
+	int r;
+	va_list ap;
+	va_start(ap, fmt);
+	r = vsnprintf(s->buf + s->pos, s->size - s->pos, fmt, ap);
+	va_end(ap);
+
+	s->pos += r;
+	if (s->pos >= s->size) {
+		s->pos = s->size - 1;
+		s->overflowed = 1;
+	}
+}
+
 #ifdef __HAVE_FDT
 
-#include <linux/platform_device.h>
 #include <dev/ofw/openfirm.h>
 #include <dev/ofw/fdt.h>
+#include <dev/ofw/ofw_clock.h>
+#include <dev/ofw/ofw_misc.h>
+#include <dev/ofw/ofw_gpio.h>
 #include <machine/fdt.h>
+
+#include <linux/clk.h>
+#include <linux/of.h>
+#include <linux/gpio/consumer.h>
+
+struct bus_type platform_bus_type;
 
 LIST_HEAD(, platform_device) pdev_list = LIST_HEAD_INITIALIZER(pdev_list);
 
@@ -3570,9 +3646,6 @@ devm_platform_ioremap_resource_byname(struct platform_device *pdev,
 	return bus_space_vaddr(pdev->iot, ioh);
 }
 
-#include <dev/ofw/ofw_clock.h>
-#include <linux/clk.h>
-
 struct clk *
 devm_clk_get(struct device *dev, const char *name)
 {
@@ -3589,9 +3662,6 @@ clk_get_rate(struct clk *clk)
 {
 	return clk->freq;
 }
-
-#include <linux/gpio/consumer.h>
-#include <dev/ofw/ofw_gpio.h>
 
 struct gpio_desc {
 	uint32_t gpios[4];
@@ -3659,13 +3729,6 @@ devm_phy_optional_get(struct device *dev, const char *name)
 
 	return phy;
 }
-
-struct bus_type platform_bus_type;
-
-#include <dev/ofw/ofw_misc.h>
-
-#include <linux/of.h>
-#include <linux/platform_device.h>
 
 struct device_node *
 __of_devnode(void *arg)

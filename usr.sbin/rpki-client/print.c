@@ -1,4 +1,4 @@
-/*	$OpenBSD: print.c,v 1.74 2026/01/20 16:49:03 tb Exp $ */
+/*	$OpenBSD: print.c,v 1.77 2026/05/04 17:34:57 job Exp $ */
 /*
  * Copyright (c) 2021 Claudio Jeker <claudio@openbsd.org>
  * Copyright (c) 2019 Kristaps Dzonsons <kristaps@bsd.lv>
@@ -378,7 +378,7 @@ crl_print(const struct crl *p)
 {
 	STACK_OF(X509_REVOKED)	*revlist;
 	X509_REVOKED *rev;
-	X509_NAME *xissuer;
+	const X509_NAME *xissuer;
 	int i;
 	char *issuer, *serial;
 	time_t t;
@@ -424,10 +424,12 @@ crl_print(const struct crl *p)
 	revlist = X509_CRL_get_REVOKED(p->x509_crl);
 	for (i = 0; i < sk_X509_REVOKED_num(revlist); i++) {
 		rev = sk_X509_REVOKED_value(revlist, i);
+		if (!x509_get_time(X509_REVOKED_get0_revocationDate(rev), &t)) {
+			warnx("x509_get_time() failed - malformed ASN.1?");
+			continue;
+		}
 		serial = x509_convert_seqnum(__func__, "serial number",
 		    X509_REVOKED_get0_serialNumber(rev));
-		if (!x509_get_time(X509_REVOKED_get0_revocationDate(rev), &t))
-			errx(1, "x509_get_time() failed - malformed ASN.1?");
 		if (serial != NULL) {
 			if (outformats & FORMAT_JSON) {
 				json_do_object("cert", 1);
@@ -802,12 +804,22 @@ tak_print(const struct cert *c, const struct tak *p)
 		json_do_end();
 }
 
+static int
+ccr_mft_aki_cmp(const void *a, const void *b)
+{
+	struct ccr_mft *ma = *(struct ccr_mft **)a;
+	struct ccr_mft *mb = *(struct ccr_mft **)b;
+
+	return memcmp(ma->aki, mb->aki, SHA_DIGEST_LENGTH);
+}
+
 static void
 print_ccr_mftstate(struct ccr *ccr)
 {
 	char *aki, *hash, *ski;
-	struct ccr_mft *ccr_mft;
+	struct ccr_mft *ccr_mft, **ccr_mfts = NULL;
 	struct ccr_mft_sub_ski *sub;
+	size_t ccr_mfts_num = 0, idx = 0;
 
 	if (outformats & FORMAT_JSON) {
 		json_do_object("manifest_state", 0);
@@ -821,7 +833,23 @@ print_ccr_mftstate(struct ccr *ccr)
 		printf("Manifest instances:\n");
 	}
 
-	RB_FOREACH(ccr_mft, ccr_mft_tree, &ccr->mfts) {
+	if (RB_EMPTY(&ccr->mfts))
+		goto out;
+
+	RB_FOREACH(ccr_mft, ccr_mft_tree, &ccr->mfts)
+		ccr_mfts_num++;
+
+	if ((ccr_mfts = calloc(ccr_mfts_num, sizeof(ccr_mfts[0]))) == NULL)
+		err(1, NULL);
+
+	RB_FOREACH(ccr_mft, ccr_mft_tree, &ccr->mfts)
+		ccr_mfts[idx++] = ccr_mft;
+
+	qsort(ccr_mfts, ccr_mfts_num, sizeof(ccr_mfts[0]), ccr_mft_aki_cmp);
+
+	for (idx = 0; idx < ccr_mfts_num; idx++) {
+		ccr_mft = ccr_mfts[idx];
+
 		if (base64_encode(ccr_mft->hash, SHA256_DIGEST_LENGTH, &hash)
 		    == -1)
 			errx(1, "base64_encode");
@@ -874,10 +902,14 @@ print_ccr_mftstate(struct ccr *ccr)
 		free(aki);
 		free(hash);
 	}
+
+ out:
 	if (outformats & FORMAT_JSON) {
 		json_do_end(); /* mft_instances */
 		json_do_end(); /* manifest_state */
 	}
+
+	free(ccr_mfts);
 }
 
 static void

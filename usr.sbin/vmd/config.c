@@ -1,4 +1,4 @@
-/*	$OpenBSD: config.c,v 1.80 2026/01/14 03:09:05 dv Exp $	*/
+/*	$OpenBSD: config.c,v 1.82 2026/04/27 13:06:14 hshoexer Exp $	*/
 
 /*
  * Copyright (c) 2015 Reyk Floeter <reyk@openbsd.org>
@@ -32,6 +32,7 @@
 #include <imsg.h>
 
 #include "proc.h"
+#include "virtio.h"
 #include "vmd.h"
 
 /* Supported bridge types */
@@ -190,10 +191,12 @@ config_setvm(struct privsep *ps, struct vmd_vm *vm, uint32_t peerid, uid_t uid)
 	int diskfds[VM_MAX_DISKS_PER_VM][VM_MAX_BASE_PER_DISK];
 	struct vmd_if		*vif;
 	struct vmop_create_params *vmc = &vm->vm_params;
+	enum vm_disk_fmt	 type;
 	unsigned int		 i, j;
 	int			 fd = -1, cdromfd = -1, kernfd = -1;
 	int			*tapfds = NULL;
-	int			 n = 0, aflags, oflags, ret = -1;
+	int			 aflags, oflags, ret = -1;
+	ssize_t			 n = 0;
 	char			 ifname[IF_NAMESIZE], *s;
 	char			 path[PATH_MAX], base[PATH_MAX];
 	unsigned int		 unit;
@@ -294,8 +297,11 @@ config_setvm(struct privsep *ps, struct vmd_vm *vm, uint32_t peerid, uid_t uid)
 			goto fail;
 		}
 
-		vm->vm_kernel = kernfd;
-		vmc->vmc_kernel = kernfd;
+		if ((vm->vm_kernel = dup(kernfd)) == -1) {
+			ret = errno;
+			goto fail;
+		}
+		vmc->vmc_kernel = vm->vm_kernel;
 	}
 
 	/* Open CDROM image for child */
@@ -330,7 +336,6 @@ config_setvm(struct privsep *ps, struct vmd_vm *vm, uint32_t peerid, uid_t uid)
 		oflags = O_RDWR | O_EXLOCK | O_NONBLOCK;
 		aflags = R_OK | W_OK;
 		for (j = 0; j < VM_MAX_BASE_PER_DISK; j++) {
-			/* Stat disk[i] to ensure it is a regular file */
 			if ((diskfds[i][j] = open(path, oflags)) == -1) {
 				log_warn("can't open disk %s",
 				    vmc->vmc_disks[i]);
@@ -338,6 +343,10 @@ config_setvm(struct privsep *ps, struct vmd_vm *vm, uint32_t peerid, uid_t uid)
 				goto fail;
 			}
 
+			/*
+			 * Check if it's a regular file and accessible to
+			 * the user starting the vm.
+			 */
 			if (vm_checkaccess(diskfds[i][j],
 			    vmc->vmc_checkaccess & VMOP_CREATE_DISK,
 			    uid, aflags) == -1) {
@@ -347,6 +356,23 @@ config_setvm(struct privsep *ps, struct vmd_vm *vm, uint32_t peerid, uid_t uid)
 				goto fail;
 			}
 
+			/* Identify the disk type if unknown. */
+			type = vmc->vmc_disktypes[i];
+			if (type == VMDF_AUTO) {
+				type = virtio_get_disktype(diskfds[i][j]);
+				vmc->vmc_disktypes[i] = type;
+			}
+			if (type != VMDF_RAW && type != VMDF_QCOW2) {
+				log_warnx("vm \"%s\" invalid disk format",
+				    vmc->vmc_name);
+				ret = EINVAL;
+				goto fail;
+			}
+
+			/* We're done if it's not a QCOW disk image. */
+			if (type != VMDF_QCOW2)
+				break;
+
 			/*
 			 * Clear the write and exclusive flags for base images.
 			 * All writes should go to the top image, allowing them
@@ -354,16 +380,20 @@ config_setvm(struct privsep *ps, struct vmd_vm *vm, uint32_t peerid, uid_t uid)
 			 */
 			oflags = O_RDONLY | O_NONBLOCK;
 			aflags = R_OK;
-			n = virtio_get_base(diskfds[i][j], base, sizeof(base),
-			    vmc->vmc_disktypes[i], path);
-			if (n == 0)
-				break;
+
+			/* Resolve the path of the next base image, if any. */
+			n = virtio_qcow2_get_base(diskfds[i][j], base,
+			    sizeof(base), path);
 			if (n == -1) {
 				log_warnx("vm \"%s\" unable to read "
 				    "base for disk %s", vmc->vmc_name,
 				    vmc->vmc_disks[i]);
 				goto fail;
 			}
+			/* Are we at the last base image layer? */
+			if (n == 0)
+				break;
+
 			(void)strlcpy(path, base, sizeof(path));
 		}
 	}
@@ -455,7 +485,7 @@ config_setvm(struct privsep *ps, struct vmd_vm *vm, uint32_t peerid, uid_t uid)
 	/* Send VM information */
 	/* XXX check proc_compose_imsg return values */
 	proc_compose_imsg(ps, PROC_VMM, IMSG_VMDOP_START_VM_REQUEST,
-	    vm->vm_vmid, vm->vm_kernel, vmc, sizeof(*vmc));
+	    vm->vm_vmid, kernfd, vmc, sizeof(*vmc));
 
 	if (strlen(vmc->vmc_cdrom))
 		proc_compose_imsg(ps, PROC_VMM, IMSG_VMDOP_START_VM_CDROM,
@@ -501,6 +531,8 @@ config_setvm(struct privsep *ps, struct vmd_vm *vm, uint32_t peerid, uid_t uid)
 	log_warnx("failed to start vm %s", vmc->vmc_name);
 
 	if (vm->vm_kernel != -1)
+		close(vm->vm_kernel);
+	if (kernfd != -1)
 		close(kernfd);
 	if (cdromfd != -1)
 		close(cdromfd);

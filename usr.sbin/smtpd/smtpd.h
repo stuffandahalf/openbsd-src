@@ -1,4 +1,4 @@
-/*	$OpenBSD: smtpd.h,v 1.692 2026/03/10 17:30:23 martijn Exp $	*/
+/*	$OpenBSD: smtpd.h,v 1.694 2026/04/16 19:37:42 op Exp $	*/
 
 /*
  * Copyright (c) 2008 Gilles Chehade <gilles@poolp.org>
@@ -55,7 +55,7 @@
 #define SMTPD_QUEUE_EXPIRY	 (4 * 24 * 60 * 60)
 #define SMTPD_SOCKET		 "/var/run/smtpd.sock"
 #define	SMTPD_NAME		 "OpenSMTPD"
-#define	SMTPD_VERSION		 "7.8.0"
+#define	SMTPD_VERSION		 "7.9.0"
 #define SMTPD_SESSION_TIMEOUT	 300
 #define SMTPD_BACKLOG		 5
 
@@ -1712,7 +1712,6 @@ int xasprintf(char **, const char *, ...)
 void *xmalloc(size_t);
 void *xcalloc(size_t, size_t);
 char *xstrdup(const char *);
-char *xstrndup(const char *, size_t);
 void *xmemdup(const void *, size_t);
 char *strip(char *);
 int io_xprint(struct io *, const char *);

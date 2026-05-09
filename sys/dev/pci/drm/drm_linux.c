@@ -1,4 +1,4 @@
-/*	$OpenBSD: drm_linux.c,v 1.134 2026/03/31 08:54:14 jsg Exp $	*/
+/*	$OpenBSD: drm_linux.c,v 1.137 2026/04/28 03:44:14 jsg Exp $	*/
 /*
  * Copyright (c) 2013 Jonathan Gray <jsg@openbsd.org>
  * Copyright (c) 2015, 2016 Mark Kettenis <kettenis@openbsd.org>
@@ -810,6 +810,7 @@ void
 idr_init(struct idr *idr)
 {
 	SPLAY_INIT(&idr->tree);
+	idr->next = 0;
 }
 
 void
@@ -864,6 +865,44 @@ idr_alloc(struct idr *idr, void *ptr, int start, int end, gfp_t gfp_mask)
 		}
 	}
 	id->ptr = ptr;
+	return id->id;
+}
+
+/* [start, end) */
+int
+idr_alloc_cyclic(struct idr *idr, void *ptr, int start, int end, gfp_t gfp_mask)
+{
+	int flags = (gfp_mask & GFP_NOWAIT) ? PR_NOWAIT : PR_WAITOK;
+	struct idr_entry *id;
+
+	KERNEL_ASSERT_LOCKED();
+
+	if (idr_entry_cache) {
+		id = idr_entry_cache;
+		idr_entry_cache = NULL;
+	} else {
+		id = pool_get(&idr_pool, flags);
+		if (id == NULL)
+			return -ENOMEM;
+	}
+
+	if (end <= 0)
+		end = INT_MAX;
+
+	id->id = idr->next;
+	while (SPLAY_INSERT(idr_tree, &idr->tree, id)) {
+		id->id++;
+		if (id->id == end) {
+			id->id = start;
+		} else if (id->id == idr->next) {
+			pool_put(&idr_pool, id);
+			return -ENOSPC;
+		}
+	}
+	id->ptr = ptr;
+	idr->next = id->id + 1;
+	if (idr->next == end)
+		idr->next = start;
 	return id->id;
 }
 
@@ -1027,7 +1066,7 @@ xa_destroy(struct xarray *xa)
 	}
 }
 
-/* Don't wrap ids. */
+/* [start, end] Don't wrap ids. */
 int
 __xa_alloc(struct xarray *xa, u32 *id, void *entry, struct xarray_range xr,
     gfp_t gfp)
@@ -1067,18 +1106,51 @@ __xa_alloc(struct xarray *xa, u32 *id, void *entry, struct xarray_range xr,
 	return 0;
 }
 
-/*
- * Wrap ids and store next id.
- * We walk the entire tree so don't special case wrapping.
- * The only caller of this (i915_drm_client.c) doesn't use next id.
- */
+/* [start, end] Wrap ids and store next id. */
 int
 __xa_alloc_cyclic(struct xarray *xa, u32 *id, void *entry,
     struct xarray_range xr, u32 *next, gfp_t gfp)
 {
-	int r = __xa_alloc(xa, id, entry, xr, gfp);
-	*next = *id + 1;
-	return r;
+	struct xarray_entry *xid;
+	uint32_t start = xr.start;
+	uint32_t end = xr.end;
+
+	if (start == 0 && (xa->xa_flags & XA_FLAGS_ALLOC1))
+		start = 1;
+
+	if (gfp & GFP_NOWAIT) {
+		xid = pool_get(&xa_pool, PR_NOWAIT);
+	} else {
+		mtx_leave(&xa->xa_lock);
+		xid = pool_get(&xa_pool, PR_WAITOK);
+		mtx_enter(&xa->xa_lock);
+	}
+
+	if (xid == NULL)
+		return -ENOMEM;
+
+	if (*next < start)
+		xid->id = start;
+	else
+		xid->id = *next;
+
+	while (SPLAY_INSERT(xarray_tree, &xa->xa_tree, xid)) {
+		if (xid->id == end) {
+			xid->id = start;
+		} else if (xid->id == *next) {
+			pool_put(&xa_pool, xid);
+			return -EBUSY;
+		} else {
+			xid->id++;
+		}
+	}
+	xid->ptr = entry;
+	if (xid->id == end)
+		*next = start;
+	else
+		*next = xid->id + 1;
+	*id = xid->id;
+	return 0;
 }
 
 void *
@@ -2907,7 +2979,7 @@ drm_linux_init(void)
 
 	pool_init(&idr_pool, sizeof(struct idr_entry), 0, IPL_TTY, 0,
 	    "idrpl", NULL);
-	pool_init(&xa_pool, sizeof(struct xarray_entry), 0, IPL_NONE, 0,
+	pool_init(&xa_pool, sizeof(struct xarray_entry), 0, IPL_TTY, 0,
 	    "xapl", NULL);
 
 	kmap_atomic_va =

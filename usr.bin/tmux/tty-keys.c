@@ -1,4 +1,4 @@
-/* $OpenBSD: tty-keys.c,v 1.203 2026/02/23 09:08:07 nicm Exp $ */
+/* $OpenBSD: tty-keys.c,v 1.205 2026/04/22 06:57:08 nicm Exp $ */
 
 /*
  * Copyright (c) 2007 Nicholas Marriott <nicholas.marriott@gmail.com>
@@ -1383,7 +1383,7 @@ tty_keys_clipboard(struct tty *tty, const char *buf, size_t len, size_t *size)
 	copy[end] = '\0';
 
 	/* Convert from base64. */
-	needed = (end / 4) * 3;
+	needed = ((end + 3) / 4) * 3;
 	if (needed == 0) {
 		free(copy);
 		return (0);
@@ -1640,6 +1640,8 @@ tty_keys_extended_device_attributes(struct tty *tty, const char *buf,
 		tty_default_features(features, "mintty", 0);
 	else if (strncmp(tmp, "foot(", 5) == 0)
 		tty_default_features(features, "foot", 0);
+	else if (strncmp(tmp, "WezTerm ", 7) == 0)
+		tty_default_features(features, "WezTerm", 0);
 	log_debug("%s: received extended DA %.*s", c->name, (int)*size, buf);
 
 	free(c->term_type);

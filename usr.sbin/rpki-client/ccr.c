@@ -1,4 +1,4 @@
-/*	$OpenBSD: ccr.c,v 1.33 2026/01/29 18:25:29 tb Exp $ */
+/*	$OpenBSD: ccr.c,v 1.37 2026/05/05 09:29:16 tb Exp $ */
 /*
  * Copyright (c) 2025 Job Snijders <job@openbsd.org>
  *
@@ -395,13 +395,9 @@ append_cached_vrp(STACK_OF(ROAIPAddress) *addresses, struct vrp *vrp)
 	if (num_bits > 0)
 		unused_bits = 8 - num_bits;
 
-	if (!ASN1_BIT_STRING_set(ripa->address, vrp->addr.addr, num_bytes))
-		errx(1, "ASN1_BIT_STRING_set");
-
-	/* ip_addr_parse() handles unused bits, no need to clear them here. */
-	ripa->address->flags |= ASN1_STRING_FLAG_BITS_LEFT | unused_bits;
-
-	/* XXX - assert that unused bits are zero */
+	if (!ASN1_BIT_STRING_set1(ripa->address, vrp->addr.addr, num_bytes,
+	    unused_bits))
+		errx(1, "ASN1_BIT_STRING_set1");
 
 	if (vrp->maxlength > vrp->addr.prefixlen) {
 		if ((ripa->maxLength = ASN1_INTEGER_new()) == NULL)
@@ -832,14 +828,14 @@ ccr_vrp_cmp(const struct vrp *a, const struct vrp *b)
 		break;
 	}
 
-	if (a->addr.prefixlen < b->addr.prefixlen)
-		return 1;
 	if (a->addr.prefixlen > b->addr.prefixlen)
+		return 1;
+	if (a->addr.prefixlen < b->addr.prefixlen)
 		return -1;
 
-	if (a->maxlength < b->maxlength)
-		return 1;
 	if (a->maxlength > b->maxlength)
+		return 1;
+	if (a->maxlength < b->maxlength)
 		return -1;
 
 	return 0;
@@ -1092,6 +1088,12 @@ parse_manifeststate(const char *fn, struct ccr *ccr, const ManifestState *state)
 	if (!x509_get_generalized_time(fn, "CCR mostRecentUpdate",
 	    state->mostRecentUpdate, &ccr->most_recent_update))
 		goto out;
+
+	if (sk_ManifestInstance_num(state->mis) == 0 &&
+	    ccr->most_recent_update != 0) {
+		warnx("%s: invalid ManifestState mostRecentUpdate", fn);
+		goto out;
+	}
 
 	if (!parse_mft_instances(fn, ccr, state->mis))
 		goto out;
@@ -1597,7 +1599,7 @@ ccr_parse(const char *fn, const unsigned char *der, size_t len)
 		char buf[128];
 
 		OBJ_obj2txt(buf, sizeof(buf), ci->contentType, 1);
-		warnx("%s: unexpected OID: got %s, want 1.3.6.1.4.1.41948.828",
+		warnx("%s: unexpected OID: got %s, want 1.2.840.113549.1.9.16.1.54",
 		    fn, buf);
 		goto out;
 	}

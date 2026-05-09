@@ -1,4 +1,4 @@
-/*	$OpenBSD: bgpd.h,v 1.538 2026/03/19 12:44:22 claudio Exp $ */
+/*	$OpenBSD: bgpd.h,v 1.541 2026/05/07 18:56:38 claudio Exp $ */
 
 /*
  * Copyright (c) 2003, 2004 Henning Brauer <henning@openbsd.org>
@@ -49,6 +49,7 @@
 
 #define	MAX_PKTSIZE			4096
 #define	MAX_EXT_PKTSIZE			65535
+#define	MAX_ASPATH_COUNT		750	/* max # of asn in a path */
 #define	MAX_BGPD_IMSGSIZE		(128 * 1024)
 #define	MAX_SOCK_BUF			(4 * IBUF_READ_SIZE)
 #define	RT_BUF_SIZE			16384
@@ -436,10 +437,10 @@ struct auth_config {
 
 struct capabilities {
 	struct {
-		int16_t	timeout;	/* graceful restart timeout */
-		int8_t	flags[AID_MAX];	/* graceful restart per AID flags */
-		int8_t	restart;	/* graceful restart, RFC 4724 */
-		int8_t	grnotification;	/* graceful notification, RFC 8538 */
+		uint16_t	timeout;	/* gr restart timeout */
+		int8_t		flags[AID_MAX];	/* gr restart per AID flags */
+		int8_t		restart;	/* gr restart, RFC 4724 */
+		int8_t		grnotification;	/* gr notification, RFC 8538 */
 	}	grestart;
 	int8_t	mp[AID_MAX];		/* multiprotocol extensions, RFC 4760 */
 	int8_t	add_path[AID_MAX];	/* ADD_PATH, RFC 7911 */
@@ -1057,13 +1058,13 @@ struct ctl_kroute_req {
 	sa_family_t		af;
 };
 
-enum filter_actions {
+enum filter_action {
 	ACTION_NONE,
 	ACTION_ALLOW,
 	ACTION_DENY
 };
 
-enum directions {
+enum direction {
 	DIR_IN = 1,
 	DIR_OUT
 };
@@ -1277,8 +1278,8 @@ struct filter_rule {
 #define RDE_FILTER_SKIP_REMOTE_AS	2
 #define RDE_FILTER_SKIP_COUNT		3
 	struct filter_rule		*skip[RDE_FILTER_SKIP_COUNT];
-	enum filter_actions		action;
-	enum directions			dir;
+	enum filter_action		action;
+	enum direction			dir;
 	uint8_t				quick;
 };
 
@@ -1675,6 +1676,7 @@ int		 aspath_verify(struct ibuf *, int, int);
 #define		 AS_ERR_TYPE	-2
 #define		 AS_ERR_BAD	-3
 #define		 AS_ERR_SOFT	-4
+#define		 AS_ERR_MAX	-5
 struct ibuf	*aspath_inflate(struct ibuf *);
 int		 extract_prefix(const u_char *, int, void *, uint8_t, uint8_t);
 int		 nlri_get_prefix(struct ibuf *, struct bgpd_addr *, uint8_t *);

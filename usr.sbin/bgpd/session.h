@@ -1,4 +1,4 @@
-/*	$OpenBSD: session.h,v 1.194 2026/03/02 12:08:30 claudio Exp $ */
+/*	$OpenBSD: session.h,v 1.196 2026/05/07 09:17:27 claudio Exp $ */
 
 /*
  * Copyright (c) 2003, 2004 Henning Brauer <henning@openbsd.org>
@@ -39,6 +39,7 @@
 #define	MSGSIZE_RREFRESH_MIN		MSGSIZE_RREFRESH
 #define	MSG_PROCESS_LIMIT		25
 #define	SESSION_CLEAR_DELAY		5
+#define	PAUSEACCEPT_TIMEOUT		1
 
 enum session_state {
 	STATE_NONE,
@@ -342,7 +343,7 @@ void		 session_graceful_restart(struct peer *);
 void		 session_graceful_flush(struct peer *, uint8_t, const char *);
 void		 session_mrt_dump_state(struct peer *);
 void		 session_mrt_dump_bgp_msg(struct peer *, struct ibuf *,
-		    enum msg_type, enum directions);
+		    enum msg_type, enum direction);
 int		 peer_matched(struct peer *, struct ctl_neighbor *);
 int		 imsg_ctl_parent(struct imsg *);
 int		 imsg_ctl_rde(struct imsg *);

@@ -1,4 +1,4 @@
-/*	$OpenBSD: parse.y,v 1.488 2026/03/02 09:51:48 claudio Exp $ */
+/*	$OpenBSD: parse.y,v 1.492 2026/05/08 12:03:50 tb Exp $ */
 
 /*
  * Copyright (c) 2002, 2003, 2004 Henning Brauer <henning@openbsd.org>
@@ -772,9 +772,9 @@ conf_main	: AS as4number		{
 			conf->min_holdtime = $3;
 		}
 		| STALETIME NUMBER	{
-			if ($2 < MIN_HOLDTIME || $2 > USHRT_MAX) {
+			if ($2 < MIN_HOLDTIME || $2 > CAPA_GR_TIMEMASK) {
 				yyerror("staletime must be between %u and %u",
-				    MIN_HOLDTIME, USHRT_MAX);
+				    MIN_HOLDTIME, CAPA_GR_TIMEMASK);
 				YYERROR;
 			}
 			conf->staletime = $2;
@@ -1720,7 +1720,7 @@ neighbor	: { curpeer = new_peer(); }
 			}
 		}
 		    peeropts_h {
-			uint8_t		aid;
+			u_int		aid;
 
 			if (curpeer_filter[0] != NULL)
 				TAILQ_INSERT_TAIL(peerfilter_l,
@@ -1937,18 +1937,19 @@ peeropts	: REMOTEAS as4number	{
 			curpeer->conf.min_holdtime = $3;
 		}
 		| STALETIME NUMBER	{
-			if ($2 < MIN_HOLDTIME || $2 > USHRT_MAX) {
+			if ($2 < MIN_HOLDTIME || $2 > CAPA_GR_TIMEMASK) {
 				yyerror("staletime must be between %u and %u",
-				    MIN_HOLDTIME, USHRT_MAX);
+				    MIN_HOLDTIME, CAPA_GR_TIMEMASK);
 				YYERROR;
 			}
 			curpeer->conf.staletime = $2;
 		}
 		| ANNOUNCE af safi enforce {
-			uint8_t		aid, safi;
-			uint16_t	afi;
-
 			if ($3 == SAFI_NONE) {
+				u_int		aid;
+				uint8_t		safi;
+				uint16_t	afi;
+
 				for (aid = AID_MIN; aid < AID_MAX; aid++) {
 					if (aid2afi(aid, &afi, &safi) == -1 ||
 					    afi != $2)
@@ -1956,6 +1957,8 @@ peeropts	: REMOTEAS as4number	{
 					curpeer->conf.capabilities.mp[aid] = -1;
 				}
 			} else {
+				uint8_t aid;
+
 				if (afi2aid($2, $3, &aid) == -1) {
 					yyerror("unknown AFI/SAFI pair");
 					YYERROR;
@@ -1989,7 +1992,7 @@ peeropts	: REMOTEAS as4number	{
 		}
 		| ANNOUNCE ADDPATH RECV yesnoenforce {
 			int8_t *ap = curpeer->conf.capabilities.add_path;
-			uint8_t i;
+			u_int i;
 
 			for (i = AID_MIN; i < AID_MAX; i++) {
 				if ($4) {
@@ -2003,7 +2006,7 @@ peeropts	: REMOTEAS as4number	{
 		| ANNOUNCE ADDPATH SEND STRING addpathextra addpathmax enforce {
 			int8_t *ap = curpeer->conf.capabilities.add_path;
 			enum addpath_mode mode;
-			u_int8_t i;
+			u_int i;
 
 			if (!strcmp($4, "no")) {
 				free($4);
@@ -5914,13 +5917,13 @@ push_binary_numop(enum comp_ops op, long long min, long long max)
 
 struct icmptypeent {
 	const char *name;
-	u_int8_t type;
+	uint8_t type;
 };
 
 struct icmpcodeent {
 	const char *name;
-	u_int8_t type;
-	u_int8_t code;
+	uint8_t type;
+	uint8_t code;
 };
 
 static const struct icmptypeent icmp_type[] = {

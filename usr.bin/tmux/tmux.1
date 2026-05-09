@@ -1,4 +1,4 @@
-.\" $OpenBSD: tmux.1,v 1.1043 2026/03/27 08:41:54 nicm Exp $
+.\" $OpenBSD: tmux.1,v 1.1053 2026/05/07 09:15:44 nicm Exp $
 .\"
 .\" Copyright (c) 2007 Nicholas Marriott <nicholas.marriott@gmail.com>
 .\"
@@ -14,7 +14,7 @@
 .\" IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING
 .\" OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 .\"
-.Dd $Mdocdate: March 27 2026 $
+.Dd $Mdocdate: May 7 2026 $
 .Dt TMUX 1
 .Os
 .Sh NAME
@@ -2221,6 +2221,11 @@ Turn off rectangle selection mode.
 (emacs: R)
 .Xc
 Toggle rectangle selection mode.
+.It Xo
+.Ic recentre\-top\-bottom
+(emacs : C-l)
+.Xc
+Cycles the current line between centre, top, and bottom.
 .It Xo
 .Ic refresh\-from\-pane
 (vi: r)
@@ -4487,6 +4492,8 @@ mouse sequences.
 Supports the OSC 7 working directory extension.
 .It overline
 Supports the overline SGR attribute.
+.It progressbar
+Supports the OSC 9;4 progress bar extension.
 .It rectfill
 Supports the DECFRA rectangle fill escape sequence.
 .It RGB
@@ -5144,17 +5151,6 @@ section.
 .It Ic copy\-mode\-position\-format Ar format
 Format of the position indicator in copy mode.
 .Pp
-.It Xo Ic mode\-keys
-.Op Ic vi | emacs
-.Xc
-Use vi or emacs-style key bindings in copy mode.
-The default is emacs, unless
-.Ev VISUAL
-or
-.Ev EDITOR
-contains
-.Ql vi .
-.Pp
 .It Ic copy\-mode\-position\-style Ar style
 Set the style of the position indicator in copy mode.
 For how to specify
@@ -5170,6 +5166,63 @@ For how to specify
 see the
 .Sx STYLES
 section.
+.Pp
+.It Ic copy\-mode\-current\-line\-number\-style Ar style
+Set style of current line number in copy mode.
+For how to specify
+.Ar style ,
+see the
+.Sx STYLES
+section.
+.Pp
+.It Ic copy\-mode\-line\-number\-style Ar style
+Set style of line numbers in copy mode.
+For how to specify
+.Ar style ,
+see the
+.Sx STYLES
+section.
+.Pp
+.It Xo Ic copy\-mode\-line\-numbers
+.Op Ic off | default | absolute | relative | hybrid
+.Xc
+Show line numbers in copy mode.
+.Ic off
+hides line numbers,
+.Ic default
+shows line numbers matching the copy mode position indicator and
+.Ic goto\-line ,
+.Ic absolute
+shows absolute line numbers,
+.Ic relative
+shows line numbers relative to the cursor, and
+.Ic hybrid
+shows the current line number as absolute and other line numbers as
+relative.
+With
+.Ic off
+or
+.Ic default ,
+the position indicator and
+.Ic goto\-line
+use the same numbering;
+with
+.Ic absolute ,
+.Ic relative
+and
+.Ic hybrid ,
+they use absolute line numbers.
+.Pp
+.It Xo Ic mode\-keys
+.Op Ic vi | emacs
+.Xc
+Use vi or emacs-style key bindings in copy mode.
+The default is emacs, unless
+.Ev VISUAL
+or
+.Ev EDITOR
+contains
+.Ql vi .
 .Pp
 .It Ic mode\-style Ar style
 Set window modes style.
@@ -5415,6 +5468,17 @@ A value of 0 (the default) means no limit.
 When a limit is set, panes are arranged to not exceed this number of columns,
 with additional panes stacked in extra rows.
 .Pp
+.It Ic tree\-mode\-preview\-format Ar format
+Format of the preview indicator in tree mode.
+.Pp
+.It Ic tree\-mode\-preview\-style Ar style
+Set the style of the preview indicator in tree mode.
+For how to specify
+.Ar style ,
+see the
+.Sx STYLES
+section.
+.Pp
 .It Ic window\-status\-activity\-style Ar style
 Set status line style for windows with an activity alert.
 For how to specify
@@ -5569,13 +5633,16 @@ uses when the colour with that index is requested.
 The index may be from zero to 255.
 .Pp
 .It Xo Ic remain\-on\-exit
-.Op Ic on | off | failed
+.Op Ic on | off | failed | key
 .Xc
 A pane with this flag set is not destroyed when the program running in it
 exits.
 If set to
 .Ic failed ,
 then only when the program exit status is not zero.
+If set to
+.Ic key ,
+the pane stays open and closes when a key is pressed.
 The pane may be reactivated with the
 .Ic respawn\-pane
 command.
@@ -5795,7 +5862,12 @@ and a location suffix, one of the following:
 .It Li "ScrollbarSlider" Ta "the scrollbar slider"
 .It Li "ScrollbarUp" Ta "above the scrollbar slider"
 .It Li "ScrollbarDown" Ta "below the scrollbar slider"
+.It Li "ControlN" Ta "on control range N"
 .El
+.Pp
+See the
+.Sx STYLES
+section for information on control ranges.
 .Pp
 The following mouse events are available:
 .Bl -column "MouseDown1" "MouseDrag1" "WheelDown" -offset indent
@@ -6298,6 +6370,8 @@ The following variables are available, where appropriate:
 .It Li "copy_cursor_word" Ta "" Ta "Word under cursor in copy mode"
 .It Li "copy_cursor_x" Ta "" Ta "Cursor X position in copy mode"
 .It Li "copy_cursor_y" Ta "" Ta "Cursor Y position in copy mode"
+.It Li "copy_position" Ta "" Ta "Position shown in the copy mode indicator"
+.It Li "copy_position_limit" Ta "" Ta "Limit shown in the copy mode indicator"
 .It Li "current_file" Ta "" Ta "Current configuration file"
 .It Li "cursor_character" Ta "" Ta "Character at cursor in pane"
 .It Li "cursor_colour" Ta "" Ta "Cursor colour in pane"
@@ -6364,6 +6438,8 @@ The following variables are available, where appropriate:
 .It Li "pane_dead_status" Ta "" Ta "Exit status of process in dead pane"
 .It Li "pane_dead_time" Ta "" Ta "Exit time of process in dead pane"
 .It Li "pane_fg" Ta "" Ta "Pane foreground colour"
+.It Li "pane_flags" Ta "" Ta "Pane flags"
+.It Li "pane_floating_flag" Ta "" Ta "1 if pane is floating"
 .It Li "pane_format" Ta "" Ta "1 if format is for a pane"
 .It Li "pane_height" Ta "" Ta "Height of pane"
 .It Li "pane_id" Ta "#D" Ta "Unique pane ID"
@@ -6380,6 +6456,8 @@ The following variables are available, where appropriate:
 .It Li "pane_pid" Ta "" Ta "PID of first process in pane"
 .It Li "pane_pipe" Ta "" Ta "1 if pane is being piped"
 .It Li "pane_pipe_pid" Ta "" Ta "PID of pipe process, if any"
+.It Li "pane_pb_state" Ta "" Ta "Pane progress bar state, one of hidden, normal, error, indeterminate, paused (can be set by application)"
+.It Li "pane_pb_progress" Ta "" Ta "Pane progress bar progress percentage (can be set by application)"
 .It Li "pane_right" Ta "" Ta "Right of pane"
 .It Li "pane_search_string" Ta "" Ta "Last search string in copy mode"
 .It Li "pane_start_command" Ta "" Ta "Command pane started with"
@@ -6391,6 +6469,7 @@ The following variables are available, where appropriate:
 .It Li "pane_tty" Ta "" Ta "Pseudo terminal of pane"
 .It Li "pane_unseen_changes" Ta "" Ta "1 if there were changes in pane while in mode"
 .It Li "pane_width" Ta "" Ta "Width of pane"
+.It Li "pane_floating_flag" Ta "" Ta "1 if pane is floating"
 .It Li "pid" Ta "" Ta "Server PID"
 .It Li "prev_window_active" Ta "" Ta "1 if previous window in W: loop is active"
 .It Li "prev_window_index" Ta "" Ta "Index of previous window in W: loop"
@@ -6607,6 +6686,7 @@ replaces the previous saved default).
 .Ic range=window|X ,
 .Ic range=pane|X ,
 .Ic range=user|X ,
+.Ic range=control|N ,
 .Ic norange
 .Xc
 Mark a range for mouse events in the
@@ -6653,6 +6733,19 @@ will be available in the
 format variable.
 .Ql X
 must be at most 15 bytes in length.
+.Pp
+.Ic range=control|N
+is a set of ranges for users to define custom behavior.
+.Ql N
+can be 0 through 9.
+When a mouse event occurs in the
+.Ic range=control|N
+range, the
+.Ql ControlN
+key binding is triggered.
+See
+.Sx MOUSE SUPPORT
+for details.
 .It Ic set\-default
 Set the current colours and attributes as the default, overwriting any previous
 default.
@@ -6884,7 +6977,7 @@ See
 for possible values for
 .Ar prompt\-type .
 .It Xo Ic command\-prompt
-.Op Fl 1beFiklN
+.Op Fl 1bCeFiklN
 .Op Fl I Ar inputs
 .Op Fl p Ar prompts
 .Op Fl t Ar target\-client
@@ -6954,6 +7047,9 @@ is like
 but the key press is translated to a key name.
 .Fl N
 makes the prompt only accept numeric key presses.
+If
+.Fl C
+given, panes will continue to be updated while the prompt is displayed.
 .Fl i
 executes the command every time the prompt input changes instead of when the
 user exits the command prompt.
@@ -7235,7 +7331,6 @@ Display a popup running
 when omitted) on
 .Ar target\-client .
 A popup is a rectangular box drawn over the top of any panes.
-Panes are not updated while a popup is present.
 If the command is run inside an existing popup, that popup is modified.
 Only the
 .Fl b ,
@@ -7823,6 +7918,8 @@ $ printf \[aq]\e033[4 q\[aq]
 If
 .Em Se
 is not set, \&Ss with argument 0 will be used to reset the cursor style instead.
+.It Em \&Spb
+Set the state and progress for the OSC9;4 progress bar.
 .It Em \&Swd
 Set the opening sequence for the working directory notification.
 The sequence is terminated using the standard

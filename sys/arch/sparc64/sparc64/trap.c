@@ -1,4 +1,4 @@
-/*	$OpenBSD: trap.c,v 1.129 2026/03/08 17:07:31 deraadt Exp $	*/
+/*	$OpenBSD: trap.c,v 1.131 2026/04/25 12:14:38 claudio Exp $	*/
 /*	$NetBSD: trap.c,v 1.73 2001/08/09 01:03:01 eeh Exp $ */
 
 /*
@@ -89,6 +89,8 @@
  */
 const struct fpstate initfpstate = {
 	{ ~0, ~0, ~0, ~0, ~0, ~0, ~0, ~0, ~0, ~0, ~0, ~0, ~0, ~0, ~0, ~0,
+	  ~0, ~0, ~0, ~0, ~0, ~0, ~0, ~0, ~0, ~0, ~0, ~0, ~0, ~0, ~0, ~0,
+	  ~0, ~0, ~0, ~0, ~0, ~0, ~0, ~0, ~0, ~0, ~0, ~0, ~0, ~0, ~0, ~0,
 	  ~0, ~0, ~0, ~0, ~0, ~0, ~0, ~0, ~0, ~0, ~0, ~0, ~0, ~0, ~0, ~0 }
 };
 
@@ -491,7 +493,7 @@ dopanic:
 			atomic_inc_int(&uvmexp.fpswtch);
 		}
 		tf->tf_tstate |= (PSTATE_PEF<<TSTATE_PSTATE_SHIFT);
-		sparc_wr(fprs, FPRS_FEF, 0);
+		sparc_wr(fprs, FPRS_FEF | sparc_rd(fprs), 0);
 		break;
 	}
 

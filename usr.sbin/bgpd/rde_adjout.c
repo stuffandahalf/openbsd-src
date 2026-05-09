@@ -1,4 +1,4 @@
-/*	$OpenBSD: rde_adjout.c,v 1.16 2026/03/17 09:29:29 claudio Exp $ */
+/*	$OpenBSD: rde_adjout.c,v 1.18 2026/05/08 12:03:50 tb Exp $ */
 
 /*
  * Copyright (c) 2003, 2004, 2025 Claudio Jeker <claudio@openbsd.org>
@@ -420,7 +420,7 @@ adjout_prefix_index(struct pt_entry *pte, struct adjout_prefix *p)
 {
 	ptrdiff_t idx = p - pte->adjout;
 
-	if (idx < 0 || idx > pte->adjoutlen)
+	if (idx < 0 || (size_t)idx > pte->adjoutlen)
 		fatalx("corrupt pte adjout list");
 
 	return idx;
@@ -861,7 +861,7 @@ adjout_peer_flush_pending(struct rde_peer *peer)
 {
 	struct pend_attr *pa, *npa;
 	struct pend_prefix *pp, *npp;
-	uint8_t aid;
+	u_int aid;
 
 	for (aid = AID_MIN; aid < AID_MAX; aid++) {
 		TAILQ_FOREACH_SAFE(pp, &peer->withdraws[aid], entry, npp) {

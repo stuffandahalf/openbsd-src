@@ -1,4 +1,4 @@
-/*	$OpenBSD: session.c,v 1.529 2026/03/19 12:44:23 claudio Exp $ */
+/*	$OpenBSD: session.c,v 1.534 2026/05/08 12:03:50 tb Exp $ */
 
 /*
  * Copyright (c) 2003, 2004, 2005 Henning Brauer <henning@openbsd.org>
@@ -55,7 +55,6 @@
 #define PFD_LISTENERS_START	5
 
 #define MAX_TIMEOUT		240
-#define PAUSEACCEPT_TIMEOUT	1
 
 void	session_sighdlr(int);
 int	setup_listeners(u_int *);
@@ -1048,8 +1047,8 @@ session_handle_rrefresh(struct peer *peer, struct route_refresh *rr)
 void
 session_graceful_restart(struct peer *p)
 {
-	uint8_t	i;
-	uint16_t staletime = conf->staletime;
+	u_int i;
+	u_int staletime = conf->staletime;
 
 	if (p->conf.staletime)
 		staletime = p->conf.staletime;
@@ -1058,6 +1057,14 @@ session_graceful_restart(struct peer *p)
 	if (staletime > p->capa.neg.grestart.timeout)
 		staletime = p->capa.neg.grestart.timeout;
 	timer_set(&p->timers, Timer_RestartTimeout, staletime);
+
+	if (staletime < INTERVAL_SESSION_DOWN - INTERVAL_STALE)
+		staletime = INTERVAL_SESSION_DOWN - INTERVAL_STALE;
+
+	/* bits from session_down that are also needed here */
+	p->stats.last_updown = getmonotime();
+	timer_set(&p->timers, Timer_SessionDown,
+	    staletime + INTERVAL_STALE);
 
 	for (i = AID_MIN; i < AID_MAX; i++) {
 		if (p->capa.neg.grestart.flags[i] & CAPA_GR_PRESENT) {
@@ -1080,7 +1087,7 @@ session_graceful_restart(struct peer *p)
 void
 session_graceful_stop(struct peer *p)
 {
-	uint8_t	i;
+	u_int	i;
 
 	for (i = AID_MIN; i < AID_MAX; i++) {
 		/*
@@ -1119,7 +1126,7 @@ session_mrt_dump_state(struct peer *p)
 
 void
 session_mrt_dump_bgp_msg(struct peer *p, struct ibuf *msg,
-     enum msg_type msgtype, enum directions dir)
+     enum msg_type msgtype, enum direction dir)
 {
 	struct mrt		*mrt;
 
@@ -1961,7 +1968,7 @@ merge_peers(struct bgpd_config *c, struct bgpd_config *nc)
 				session_template_clone(xp, NULL, xp->conf.id,
 				    xp->conf.remote_as);
 
-				if (p->rdesession)
+				if (xp->rdesession)
 					imsg_rde(IMSG_SESSION_ADD,
 					    xp->conf.id, &xp->conf,
 					    sizeof(xp->conf));

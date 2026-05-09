@@ -1,4 +1,4 @@
-/*	$OpenBSD: pmap.c,v 1.47 2025/07/14 12:23:28 jca Exp $	*/
+/*	$OpenBSD: pmap.c,v 1.49 2026/04/15 21:15:08 kettenis Exp $	*/
 
 /*
  * Copyright (c) 2019-2020 Brian Bamsch <bbamsch@google.com>
@@ -301,7 +301,7 @@ const pt_entry_t ap_bits_kern[8] = {
 	[PROT_EXEC|PROT_WRITE|PROT_READ]	= PTE_A|PTE_X|PTE_R|PTE_D|PTE_W,
 };
 
-/* PBMT encodings for the Svpmbt modes. */
+/* PBMT encodings for the Svpbmt modes. */
 uint64_t pmap_pma;
 uint64_t pmap_nc;
 uint64_t pmap_io;
@@ -693,6 +693,12 @@ _pmap_kenter_pa(vaddr_t va, paddr_t pa, vm_prot_t prot, int flags, int cache)
 	struct pte_desc *pted;
 	struct vm_page *pg;
 
+	pg = PHYS_TO_VM_PAGE(pa);
+	if (pg && cache == PMAP_CACHE_CI) {
+		_pmap_kenter_pa(va, pa, prot, flags, PMAP_CACHE_WB);
+		cpu_dcache_wbinv_range(va & ~PAGE_MASK, PAGE_SIZE);
+	}
+
 	pted = pmap_vp_lookup(pm, va, NULL);
 
 	/* Do not have pted for this, get one and put it in VP */
@@ -717,10 +723,6 @@ _pmap_kenter_pa(vaddr_t va, paddr_t pa, vm_prot_t prot, int flags, int cache)
 	 */
 	pmap_pte_insert(pted);
 	tlb_flush_page(pm, va & ~PAGE_MASK);
-
-	pg = PHYS_TO_VM_PAGE(pa);
-	if (pg && cache == PMAP_CACHE_CI)
-		cpu_dcache_wbinv_range(pa & ~PAGE_MASK, PAGE_SIZE);
 }
 
 void
@@ -1122,14 +1124,7 @@ pmap_growkernel(vaddr_t maxkvaddr)
 
 	for (i = VP_IDX1(pmap_maxkvaddr); i <= VP_IDX1(maxkvaddr - 1); i++) {
 		vp2 = vp1->vp[i];
-		if (vp2 == NULL) {
-			vp2 = pmap_kvp_alloc();
-			if (vp2 == NULL)
-				goto fail;
-			pmap_extract(pmap_kernel(), (vaddr_t)vp2, &pa);
-			vp1->vp[i] = vp2;
-			vp1->l1[i] = VP_Lx(pa);
-		}
+		KASSERT(vp2 != NULL);
 
 		if (i == VP_IDX1(pmap_maxkvaddr)) {
 			lb_idx2 = VP_IDX2(pmap_maxkvaddr);
@@ -1275,7 +1270,7 @@ pmap_bootstrap(long kvo, vaddr_t l1pt, vaddr_t kernelstart, vaddr_t kernelend,
 
 	/* allocate memory (in unit of pages) for l2 and l3 page table */
 	for (i = VP_IDX1(VM_MIN_KERNEL_ADDRESS);
-	    i <= VP_IDX1(pmap_maxkvaddr - 1);
+	    i <= VP_IDX1(VM_MAX_KERNEL_ADDRESS - 1);
 	    i++) {
 		mappings_allocated++;
 		pa = pmap_steal_avail(sizeof(struct pmapvp2), Lx_TABLE_ALIGN,
@@ -1283,6 +1278,16 @@ pmap_bootstrap(long kvo, vaddr_t l1pt, vaddr_t kernelstart, vaddr_t kernelend,
 		vp2 = (struct pmapvp2 *)PHYS_TO_DMAP(pa);
 		vp1->vp[i] = va;
 		vp1->l1[i] = VP_Lx(pa);
+
+		/*
+		 * We must fully populate the l1 page tables since
+		 * they get copied into the page tables for userland
+		 * processes.  But skip populating the l2 page tables
+		 * above pmap_maxkvaddr.  They will be populated by
+		 * pmap_growkernel() when necessary.
+		 */
+		if (i > VP_IDX1(pmap_maxkvaddr - 1))
+			continue;
 
 		if (i == VP_IDX1(VM_MIN_KERNEL_ADDRESS)) {
 			lb_idx2 = VP_IDX2(VM_MIN_KERNEL_ADDRESS);

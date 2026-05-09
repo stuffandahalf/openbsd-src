@@ -1,4 +1,4 @@
-/*	$OpenBSD: rde.h,v 1.344 2026/03/17 09:29:29 claudio Exp $ */
+/*	$OpenBSD: rde.h,v 1.347 2026/05/07 11:21:24 claudio Exp $ */
 
 /*
  * Copyright (c) 2003, 2004 Claudio Jeker <claudio@openbsd.org> and
@@ -227,18 +227,17 @@ struct rde_aspath {
 	struct rde_aspa_state		 aspa_state;
 	int				 refcnt;
 	uint32_t			 flags;		/* internally used */
+#define	path_starthash	 med
 	uint32_t			 med;		/* multi exit disc */
 	uint32_t			 lpref;		/* local pref */
 	uint32_t			 weight;	/* low prio lpref */
 	uint16_t			 rtlabelid;	/* route label id */
 	uint16_t			 pftableid;	/* pf table id */
 	uint8_t				 origin;
+#define	path_endhash	 others_len
 	uint8_t				 others_len;
 	uint8_t				 aspa_generation;
 };
-#define PATH_HASHOFF		offsetof(struct rde_aspath, med)
-#define PATH_HASHSTART(x)	((const uint8_t *)x + PATH_HASHOFF)
-#define PATH_HASHSIZE		(sizeof(struct rde_aspath) - PATH_HASHOFF)
 
 enum nexthop_state {
 	NEXTHOP_LOOKUP,
@@ -448,7 +447,7 @@ peer_is_up(struct rde_peer *peer)
 RB_PROTOTYPE(peer_tree, rde_peer, entry, peer_cmp);
 
 /* rde_attr.c */
-int		 attr_writebuf(struct ibuf *, uint8_t, uint8_t, void *,
+int		 attr_writebuf(struct ibuf *, uint8_t, uint8_t, const void *,
 		    uint16_t);
 void		 attr_init(void);
 int		 attr_optadd(struct rde_aspath *, uint8_t, uint8_t,
@@ -462,10 +461,10 @@ void		 attr_free(struct rde_aspath *, struct attr *);
 
 void		 attr_stats(struct ch_stats *);
 
-struct aspath	*aspath_get(void *, uint16_t);
+struct aspath	*aspath_get(const void *, uint16_t);
 struct aspath	*aspath_copy(struct aspath *);
 void		 aspath_put(struct aspath *);
-u_char		*aspath_deflate(u_char *, uint16_t *, int *);
+u_char		*aspath_deflate(const u_char *, uint16_t *, int *);
 void		 aspath_merge(struct rde_aspath *, struct attr *);
 uint32_t	 aspath_neighbor(struct aspath *);
 int		 aspath_loopfree(struct aspath *, uint32_t);
@@ -568,10 +567,10 @@ int	rde_filter_skip_rule(struct rde_peer *, struct filter_rule *);
 int	rde_filter_equal(struct filter_head *, struct filter_head *);
 struct rde_filter_set	*rde_filterset_imsg_recv(struct imsg *);
 void	rde_filter_calc_skip_steps(struct filter_head *);
-enum filter_actions rde_filter(struct filter_head *, struct rde_peer *,
+enum filter_action rde_filter(struct filter_head *, struct rde_peer *,
 	    struct rde_peer *, struct bgpd_addr *, uint8_t,
 	    struct filterstate *);
-enum filter_actions rde_filter_out(struct rde_filter *, struct rde_peer *,
+enum filter_action rde_filter_out(struct rde_filter *, struct rde_peer *,
 	    struct rde_peer *, struct bgpd_addr *, uint8_t,
 	    struct filterstate *);
 

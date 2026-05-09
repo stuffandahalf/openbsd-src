@@ -1,4 +1,4 @@
-/* $OpenBSD: screen-redraw.c,v 1.112 2026/03/23 08:45:30 nicm Exp $ */
+/* $OpenBSD: screen-redraw.c,v 1.114 2026/04/23 11:29:23 nicm Exp $ */
 
 /*
  * Copyright (c) 2007 Nicholas Marriott <nicholas.marriott@gmail.com>
@@ -450,6 +450,7 @@ screen_redraw_make_pane_status(struct client *c, struct window_pane *wp,
 	struct grid_cell	 gc;
 	const char		*fmt;
 	struct format_tree	*ft;
+	struct style_line_entry	*sle = &wp->border_status_line;
 	char			*expanded;
 	int			 pane_status = rctx->pane_status, sb_w = 0;
 	int			 pane_scrollbars = rctx->pane_scrollbars;
@@ -494,11 +495,14 @@ screen_redraw_make_pane_status(struct client *c, struct window_pane *wp,
 	gc.attr &= ~GRID_ATTR_CHARSET;
 
 	screen_write_cursormove(&ctx, 0, 0, 0);
-	format_draw(&ctx, &gc, width, expanded, NULL, 0);
-	screen_write_stop(&ctx);
+	style_ranges_free(&sle->ranges);
+	format_draw(&ctx, &gc, width, expanded, &sle->ranges, 0);
 
-	free(expanded);
+	screen_write_stop(&ctx);
 	format_free(ft);
+
+	free(sle->expanded);
+	sle->expanded = expanded;
 
 	if (grid_compare(wp->status_screen.grid, old.grid) == 0) {
 		screen_free(&old);
@@ -945,8 +949,8 @@ screen_redraw_draw_pane(struct screen_redraw_ctx *ctx, struct window_pane *wp)
 	struct colour_palette	*palette = &wp->palette;
 	struct grid_cell	 defaults;
 	struct visible_ranges	*r;
-	struct visible_range	*rr;
-	u_int			 i, j, k, top, x, y, width;
+	struct visible_range	*rr = NULL;
+	u_int			 i, j, k, top, x, y, width, used;
 
 	if (wp->base.mode & MODE_SYNC)
 		screen_write_stop_sync(wp);
@@ -993,14 +997,19 @@ screen_redraw_draw_pane(struct screen_redraw_ctx *ctx, struct window_pane *wp)
 		tty_default_colours(&defaults, wp);
 
 		r = tty_check_overlay_range(tty, x, y, width);
-		for (k = 0; k < r->used; k++) {
-			rr = &r->ranges[k];
-			if (rr->nx != 0) {
-				tty_draw_line(tty, s, rr->px - wp->xoff, j,
-				    rr->nx, rr->px, y, &defaults, palette);
+		used = r->used;
+
+		rr = xreallocarray(rr, used, sizeof *rr);
+		memcpy(rr, r->ranges, used * sizeof *rr);
+
+		for (k = 0; k < used; k++) {
+			if (rr[k].nx != 0) {
+				tty_draw_line(tty, s, rr[k].px - wp->xoff, j,
+				    rr[k].nx, rr[k].px, y, &defaults, palette);
 			}
 		}
 	}
+	free(rr);
 }
 
 /* Draw the panes scrollbars */

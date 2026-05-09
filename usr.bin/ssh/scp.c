@@ -1,4 +1,4 @@
-/* $OpenBSD: scp.c,v 1.272 2026/02/08 19:54:31 dtucker Exp $ */
+/* $OpenBSD: scp.c,v 1.274 2026/04/29 22:22:10 djm Exp $ */
 /*
  * scp - secure remote copy.  This is basically patched BSD rcp which
  * uses ssh to do the data transfer (instead of using rcmd).
@@ -1637,8 +1637,10 @@ sink(int argc, char **argv, const char *src)
 
 	setimes = targisdir = 0;
 	mask = umask(0);
-	if (!pflag)
+	if (!pflag) {
 		(void) umask(mask);
+		mask |= 07000;
+	}
 	if (argc != 1) {
 		run_err("ambiguous target");
 		exit(1);

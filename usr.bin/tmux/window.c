@@ -1,4 +1,4 @@
-/* $OpenBSD: window.c,v 1.311 2026/02/10 09:55:53 nicm Exp $ */
+/* $OpenBSD: window.c,v 1.316 2026/05/03 14:57:09 nicm Exp $ */
 
 /*
  * Copyright (c) 2007 Nicholas Marriott <nicholas.marriott@gmail.com>
@@ -408,9 +408,14 @@ window_remove_ref(struct window *w, const char *from)
 void
 window_set_name(struct window *w, const char *new_name)
 {
-	free(w->name);
-	utf8_stravis(&w->name, new_name, VIS_OCTAL|VIS_CSTYLE|VIS_TAB|VIS_NL);
-	notify_window("window-renamed", w);
+	char	*name;
+
+	name = clean_name(new_name, "#");
+	if (name != NULL) {
+		free(w->name);
+		w->name = name;
+		notify_window("window-renamed", w);
+	}
 }
 
 void
@@ -589,16 +594,24 @@ struct window_pane *
 window_get_active_at(struct window *w, u_int x, u_int y)
 {
 	struct window_pane	*wp;
-	u_int			 xoff, yoff, sx, sy;
+	int			 pane_status, xoff, yoff;
+	u_int			 sx, sy;
+
+	pane_status = options_get_number(w->options, "pane-border-status");
 
 	TAILQ_FOREACH(wp, &w->panes, entry) {
 		if (!window_pane_visible(wp))
 			continue;
 		window_pane_full_size_offset(wp, &xoff, &yoff, &sx, &sy);
-		if (x < xoff || x > xoff + sx)
+		if ((int)x < xoff || x > xoff + sx)
 			continue;
-		if (y < yoff || y > yoff + sy)
-			continue;
+		if (pane_status == PANE_STATUS_TOP) {
+			if ((int)y <= yoff - 2 || y > yoff + sy - 1)
+				continue;
+		} else {
+			if ((int)y < yoff || y > yoff + sy)
+				continue;
+		}
 		return (wp);
 	}
 	return (NULL);
@@ -659,6 +672,7 @@ window_zoom(struct window_pane *wp)
 
 	if (w->active != wp)
 		window_set_active_pane(w, wp, 1);
+	wp->flags |= PANE_ZOOMED;
 
 	TAILQ_FOREACH(wp1, &w->panes, entry) {
 		wp1->saved_layout_cell = wp1->layout_cell;
@@ -689,6 +703,7 @@ window_unzoom(struct window *w, int notify)
 	TAILQ_FOREACH(wp, &w->panes, entry) {
 		wp->layout_cell = wp->saved_layout_cell;
 		wp->saved_layout_cell = NULL;
+		wp->flags ^= PANE_ZOOMED;
 	}
 	layout_fix_panes(w, NULL);
 
@@ -872,9 +887,8 @@ window_printable_flags(struct winlink *wl, int escape)
 {
 	struct session	*s = wl->session;
 	static char	 flags[32];
-	int		 pos;
+	u_int		 pos = 0;
 
-	pos = 0;
 	if (wl->flags & WINLINK_ACTIVITY) {
 		flags[pos++] = '#';
 		if (escape)
@@ -892,6 +906,25 @@ window_printable_flags(struct winlink *wl, int escape)
 		flags[pos++] = 'M';
 	if (wl->window->flags & WINDOW_ZOOMED)
 		flags[pos++] = 'Z';
+	flags[pos] = '\0';
+	return (flags);
+}
+
+const char *
+window_pane_printable_flags(struct window_pane *wp)
+{
+	struct window	*w = wp->window;
+	static char	 flags[32];
+	u_int		 pos = 0;
+
+	if (wp == w->active)
+		flags[pos++] = '*';
+	if (wp == TAILQ_FIRST(&w->last_panes))
+		flags[pos++] = '-';
+	if (wp->flags & PANE_ZOOMED)
+		flags[pos++] = 'Z';
+	if (wp->flags & PANE_FLOATING)
+		flags[pos++] = 'F';
 	flags[pos] = '\0';
 	return (flags);
 }
@@ -959,6 +992,7 @@ window_pane_create(struct window *w, u_int sx, u_int sy, u_int hlimit)
 	window_pane_default_cursor(wp);
 
 	screen_init(&wp->status_screen, 1, 1, 0);
+	style_ranges_init(&wp->border_status_line.ranges);
 
 	if (gethostname(host, sizeof host) == 0)
 		screen_set_title(&wp->base, host);
@@ -1007,6 +1041,7 @@ window_pane_destroy(struct window_pane *wp)
 	free(wp->shell);
 	cmd_free_argv(wp->argc, wp->argv);
 	colour_palette_free(&wp->palette);
+	style_ranges_free(&wp->border_status_line.ranges);
 	free(wp);
 }
 
@@ -1957,4 +1992,34 @@ window_pane_send_theme_update(struct window_pane *wp)
 		log_debug("%s: %%%u unknown theme", __func__, wp->id);
 		break;
 	}
+}
+
+struct style_range *
+window_pane_border_status_get_range(struct window_pane *wp, u_int x, u_int y)
+{
+	struct style_ranges	*srs;
+	struct window		*w;
+	struct options		*wo;
+	u_int			 line;
+	int			 pane_status;
+
+	if (wp == NULL)
+		return (NULL);
+	w = wp->window;
+	wo = w->options;
+	srs = &wp->border_status_line.ranges;
+
+	pane_status = options_get_number(wo, "pane-border-status");
+	if (pane_status == PANE_STATUS_TOP)
+		line = wp->yoff - 1;
+	else if (pane_status == PANE_STATUS_BOTTOM)
+		line = wp->yoff + wp->sy;
+	if (pane_status == PANE_STATUS_OFF || line != y)
+		return (NULL);
+
+	/*
+	 * The border formats start 2 off but that isn't reflected in
+	 * the stored bounds of the range.
+	 */
+	return (style_ranges_get_range(srs, x - wp->xoff - 2));
 }

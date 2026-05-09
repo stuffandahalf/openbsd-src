@@ -1,4 +1,4 @@
-/*	$OpenBSD: locore.s,v 1.231 2026/02/19 15:42:17 deraadt Exp $	*/
+/*	$OpenBSD: locore.s,v 1.233 2026/04/18 17:17:03 kettenis Exp $	*/
 /*	$NetBSD: locore.s,v 1.137 2001/08/13 06:10:10 jdolecek Exp $	*/
 
 /*
@@ -143,6 +143,27 @@ sun4u_mtp_patch_end:
 	.word	999b				;\
 	ldxa	[%g0] ASI_SCRATCH, ci		;\
 	.previous
+
+#ifdef MULTIPROCESSOR
+#define GET_INTSTACK(ci) \
+998:	set	CPUINFO_VA, ci			;\
+999:	ldx	[ci + CI_SELF], ci		;\
+	.section	.sun4v_mp_patch, "ax"	;\
+	.word	998b				;\
+	nop					;\
+	.word	999b				;\
+	ldxa	[%g0] ASI_SCRATCHPAD, ci	;\
+	.previous				;\
+	.section	.sun4u_mtp_patch, "ax"	;\
+	.word	998b				;\
+	nop					;\
+	.word	999b				;\
+	ldxa	[%g0] ASI_SCRATCH, ci		;\
+	.previous
+#else
+#define GET_INTSTACK(ci) \
+	GET_CPUINFO_VA(ci)
+#endif
 
 #define GET_CPCB(pcb) \
 	GET_CPUINFO_VA(pcb)			;\
@@ -1215,7 +1236,7 @@ trapbase_sun4v:
 	.macro	INTR_SETUP stackspace
 	rdpr	%wstate, %g7			! Find if we're from user mode
 
-	GET_CPUINFO_VA(%g6)
+	GET_INTSTACK(%g6)
 	sethi	%hi(EINTSTACK-INTSTACK), %g4
 	sub	%g6, BIAS, %g6			! Base of interrupt stack
 	dec	%g4				! Make it into a mask
@@ -2824,7 +2845,7 @@ Lslowtrap_reenter:
  *	%g4 = tt == T_AST
  */
 softtrap:
-	GET_CPUINFO_VA(%g5)
+	GET_INTSTACK(%g5)
 	sethi	%hi(EINTSTACK-INTSTACK), %g7
 	sub	%g5, BIAS, %g5
 	dec	%g7
@@ -3215,15 +3236,12 @@ NENTRY(ipi_save_fpstate)
 END(ipi_save_fpstate)
 
 NENTRY(ipi_drop_fpstate)
-	rdpr	%pstate, %g1
-	wr	%g0, FPRS_FEF, %fprs
-	or	%g1, PSTATE_PEF, %g1
-	wrpr	%g1, 0, %pstate
 	GET_CPUINFO_VA(%g1)
-	ldx	[%g1 + CI_FPPROC], %g5
-	cmp	%g5, %g3
+	ldx	[%g1 + CI_FPPROC], %g2
+	cmp	%g2, %g3
 	bne,pn	%xcc, 1f
 	 nop
+	wr	%g0, FPRS_FEF, %fprs
 	stx	%g0, [%g1 + CI_FPPROC]		! fpproc = NULL
 1:
 	ba	ret_from_intr_vector
@@ -6006,11 +6024,8 @@ END(memmove)
  * Drops the current fpu state, without saving it.
  */
 ENTRY(clearfpstate)
-	rdpr	%pstate, %o1		! enable FPU
-	wr	%g0, FPRS_FEF, %fprs
-	or	%o1, PSTATE_PEF, %o1
 	retl
-	 wrpr	%o1, 0, %pstate
+	 wr	%g0, FPRS_FEF, %fprs
 END(clearfpstate)
 
 /*

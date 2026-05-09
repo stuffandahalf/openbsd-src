@@ -1,4 +1,4 @@
-/*	$OpenBSD: cpu.c,v 1.22 2026/03/31 14:41:15 kettenis Exp $	*/
+/*	$OpenBSD: cpu.c,v 1.27 2026/05/02 14:09:17 jsing Exp $	*/
 
 /*
  * Copyright (c) 2016 Dale Rahn <drahn@dalerahn.com>
@@ -30,6 +30,7 @@
 #include <machine/cpufunc.h>
 #include <machine/elf.h>
 #include <machine/fdt.h>
+#include <machine/pmap.h>
 #include <machine/sbi.h>
 
 #include <dev/ofw/openfirm.h>
@@ -39,6 +40,8 @@
 #include <dev/ofw/fdt.h>
 
 /* CPU Identification */
+#define CPU_VENDOR_MIPS		0x029
+#define CPU_VENDOR_ANDES	0x31e
 #define CPU_VENDOR_SIFIVE	0x489
 #define CPU_VENDOR_THEAD	0x5b7
 #define CPU_VENDOR_SPACEMIT	0x710
@@ -79,10 +82,51 @@ const struct vendor {
 	char		*name;
 	struct arch	*archlist;
 } cpu_vendors[] = {
+	{ CPU_VENDOR_ANDES, "Andes", cpu_arch_none },
+	{ CPU_VENDOR_MIPS, "MIPS", cpu_arch_none },
 	{ CPU_VENDOR_SIFIVE, "SiFive", cpu_arch_sifive },
 	{ CPU_VENDOR_SPACEMIT, "SpacemiT", cpu_arch_spacemit },
 	{ CPU_VENDOR_THEAD, "T-Head", cpu_arch_none },
-	{ 0, NULL }
+	{ 0, NULL, NULL }
+};
+
+unsigned long riscv_hwcap;
+unsigned long riscv_hwcap2;
+
+/* Extensions */
+const struct extension {
+	const char	*name;
+	unsigned long	hwcap;
+	unsigned long	hwcap2;
+} cpu_extensions[] = {
+	{ "b", HWCAP_ISA_B, 0 },
+	{ "h", HWCAP_ISA_H, 0 },
+	{ "scofpmf", HWCAP_ISA_SCOFPMF, 0 },
+	{ "ssnpm", HWCAP_ISA_SSNPM, 0 },
+	{ "sstc", HWCAP_ISA_SSTC, 0 },
+	{ "svinval", HWCAP_ISA_SVINVAL, 0 },
+	{ "svnapot", HWCAP_ISA_SVNAPOT, 0 },
+	{ "svpbmt", HWCAP_ISA_SVPBMT, 0 },
+	{ "v", HWCAP_ISA_V, 0 },
+	{ "zba", 0, HWCAP2_ISA_ZBA },
+	{ "zbb", 0, HWCAP2_ISA_ZBB },
+	{ "zbc", 0, HWCAP2_ISA_ZBC },
+	{ "zbs", 0, HWCAP2_ISA_ZBS },
+	{ "zicbom", HWCAP_ISA_ZICBOM, 0 },
+	{ "zicbop", HWCAP_ISA_ZICBOP, 0 },
+	{ "zicboz", HWCAP_ISA_ZICBOZ, 0 },
+	{ "zkt", 0, HWCAP2_ISA_ZKT },
+	{ "zvbb", 0, HWCAP2_ISA_ZVBB },
+	{ "zvbc", 0, HWCAP2_ISA_ZVBC },
+	{ "zvfh", 0, HWCAP2_ISA_ZVFH },
+	{ "zvkg", 0, HWCAP2_ISA_ZVKG },
+	{ "zvkned", 0, HWCAP2_ISA_ZVKNED },
+	{ "zvknha", 0, HWCAP2_ISA_ZVKNHA },
+	{ "zvknhb", 0, HWCAP2_ISA_ZVKNHB },
+	{ "zvksed", 0, HWCAP2_ISA_ZVKSED },
+	{ "zvksh", 0, HWCAP2_ISA_ZVKSH },
+	{ "zvkt", 0, HWCAP2_ISA_ZVKT },
+	{ NULL, 0, 0 }
 };
 
 char cpu_model[64];
@@ -105,26 +149,35 @@ int cpu_errata_sifive_cip_1200;
 
 void	cpu_opp_init(struct cpu_info *, uint32_t);
 
-void	thead_dcache_wbinv_range(paddr_t, psize_t);
-void	thead_dcache_inv_range(paddr_t, psize_t);
-void	thead_dcache_wb_range(paddr_t, psize_t);
+size_t	zicbom_dcache_line_size;
+void	zicbom_dcache_wbinv_range(vaddr_t, vsize_t);
+void	zicbom_dcache_inv_range(vaddr_t, vsize_t);
+void	zicbom_dcache_wb_range(vaddr_t, vsize_t);
 
 size_t	thead_dcache_line_size;
+void	thead_dcache_wbinv_range(vaddr_t, vsize_t);
+void	thead_dcache_inv_range(vaddr_t, vsize_t);
+void	thead_dcache_wb_range(vaddr_t, vsize_t);
 
 void
 cpu_identify(struct cpu_info *ci)
 {
-	char isa[32];
 	uint64_t marchid, mimpid;
 	uint32_t mvendorid;
 	const char *vendor_name = NULL;
 	const char *arch_name = NULL;
 	struct arch *archlist = cpu_arch_none;
+	unsigned long cpu_hwcap, cpu_hwcap2;
+	char *names;
+	char *name;
+	char *end;
 	int i, len;
 
 	mvendorid = sbi_get_mvendorid();
 	marchid = sbi_get_marchid();
 	mimpid = sbi_get_mimpid();
+
+	cpu_hwcap = cpu_hwcap2 = 0;
 
 	for (i = 0; cpu_vendors[i].name; i++) {
 		if (mvendorid == cpu_vendors[i].id) {
@@ -149,25 +202,101 @@ cpu_identify(struct cpu_info *ci)
 		printf(" %s", arch_name);
 	else
 		printf(" arch %llx", marchid);
-	printf(" imp %llx", mimpid);
+	printf(" imp %llx\n", mimpid);
 
-	len = OF_getprop(ci->ci_node, "riscv,isa", isa, sizeof(isa));
-	if (len != -1) {
-		printf(" %s", isa);
-		strlcpy(cpu_model, isa, sizeof(cpu_model));
+	if (CPU_IS_PRIMARY(ci)) {
+		if (vendor_name && arch_name)
+			snprintf(cpu_model, sizeof(cpu_model),
+			    "%s %s imp %llx", vendor_name, arch_name, mimpid);
+		else if (vendor_name)
+			snprintf(cpu_model, sizeof(cpu_model),
+			    "%s arch %llx imp %llx", vendor_name, marchid,
+			     mimpid);
+		else
+			snprintf(cpu_model, sizeof(cpu_model), "Unknown");
 	}
-	printf("\n");
 
-	/* Handle errata. */
-	if (mvendorid == CPU_VENDOR_SIFIVE && marchid == CPU_ARCH_U7)
-		cpu_errata_sifive_cip_1200 = 1;
-	if (mvendorid == CPU_VENDOR_THEAD && marchid == 0 && mimpid == 0) {
-		cpu_dcache_wbinv_range = thead_dcache_wbinv_range;
-		cpu_dcache_inv_range = thead_dcache_inv_range;
-		cpu_dcache_wb_range = thead_dcache_wb_range;
-		thead_dcache_line_size =
-		    OF_getpropint(ci->ci_node, "d-cache-block-size", 64);
+	len = OF_getproplen(ci->ci_node, "riscv,isa-extensions");
+	if (len > 0) {
+		names = malloc(len, M_TEMP, M_WAITOK);
+		OF_getprop(ci->ci_node, "riscv,isa-extensions", names, len);
+		end = names + len;
+		name = names;
+		while (name < end) {
+			for (i = 0; cpu_extensions[i].name; i++) {
+				if (strcmp(name, cpu_extensions[i].name) == 0) {
+					cpu_hwcap |= cpu_extensions[i].hwcap;
+					cpu_hwcap2 |= cpu_extensions[i].hwcap2;
+					break;
+				}
+			}
+			name += strlen(name) + 1;
+		}
+		free(names, M_TEMP, len);
 	}
+
+	if (CPU_IS_PRIMARY(ci)) {
+		riscv_hwcap = cpu_hwcap;
+		riscv_hwcap2 = cpu_hwcap2;
+
+		if ((riscv_hwcap & HWCAP_ISA_SVPBMT) != 0) {
+			pmap_pma = PTE_PMA;
+			pmap_nc = PTE_NC;
+			pmap_io = PTE_IO;
+		}
+		if ((riscv_hwcap & HWCAP_ISA_ZICBOM) != 0) {
+			cpu_dcache_wbinv_range = zicbom_dcache_wbinv_range;
+			cpu_dcache_inv_range = zicbom_dcache_inv_range;
+			cpu_dcache_wb_range = zicbom_dcache_wb_range;
+			zicbom_dcache_line_size =
+			    OF_getpropint(ci->ci_node, "riscv,cbom-block-size", 64);
+		}
+
+		/* Handle errata. */
+		if (mvendorid == CPU_VENDOR_SIFIVE && marchid == CPU_ARCH_U7)
+			cpu_errata_sifive_cip_1200 = 1;
+		if (mvendorid == CPU_VENDOR_THEAD && marchid == 0 && mimpid == 0) {
+			cpu_dcache_wbinv_range = thead_dcache_wbinv_range;
+			cpu_dcache_inv_range = thead_dcache_inv_range;
+			cpu_dcache_wb_range = thead_dcache_wb_range;
+			thead_dcache_line_size =
+			    OF_getpropint(ci->ci_node, "d-cache-block-size", 64);
+		}
+	}
+
+	if (riscv_hwcap != cpu_hwcap) {
+		printf("%s: mismatched extensions (hwcap 0x%lx != 0x%lx)\n",
+		    ci->ci_dev->dv_xname, riscv_hwcap, cpu_hwcap);
+		riscv_hwcap &= cpu_hwcap;
+	}
+	if (riscv_hwcap2 != cpu_hwcap2) {
+		printf("%s: mismatched extensions (hwcap2 0x%lx != 0x%lx)\n",
+		    ci->ci_dev->dv_xname, riscv_hwcap2, cpu_hwcap2);
+		riscv_hwcap2 &= cpu_hwcap2;
+	}
+}
+
+void
+cpu_identify_cleanup(void)
+{
+	hwcap = HWCAP_ISA_G | HWCAP_ISA_C;
+	hwcap |= riscv_hwcap & ~(HWCAP_ISA_K_MASK | HWCAP_ISA_S_MASK);
+
+	hwcap2 = riscv_hwcap2;
+
+	/* B implies Zba, Zbb and Zbs */
+	if ((riscv_hwcap & HWCAP_ISA_B) != 0)
+		hwcap2 |= HWCAP2_ISA_ZBA | HWCAP2_ISA_ZBB | HWCAP2_ISA_ZBS;
+
+	/* Remove H extension since userland does not need to know about it. */
+	hwcap &= ~HWCAP_ISA_H;
+
+	/* Remove V extensions since they require kernel support. */
+	hwcap &= ~HWCAP_ISA_V;
+	hwcap2 &= ~(HWCAP2_ISA_ZVBB | HWCAP2_ISA_ZVBC | HWCAP2_ISA_ZVFH |
+	    HWCAP2_ISA_ZVKG | HWCAP2_ISA_ZVKNED | HWCAP2_ISA_ZVKNHA |
+	    HWCAP2_ISA_ZVKNHB | HWCAP2_ISA_ZVKSED | HWCAP2_ISA_ZVKSH |
+	    HWCAP2_ISA_ZVKT);
 }
 
 #ifdef MULTIPROCESSOR
@@ -207,10 +336,14 @@ cpu_attach(struct device *parent, struct device *dev, void *aux)
 		ci->ci_flags |= CPUF_RUNNING | CPUF_PRESENT | CPUF_PRIMARY;
 		csr_set(sie, SIE_SSIE);
 	} else {
+		struct cpu_info *ci_last;
+
 		ci = malloc(sizeof(*ci), M_DEVBUF, M_WAITOK | M_ZERO);
 		cpu_info[dev->dv_unit] = ci;
-		ci->ci_next = cpu_info_list->ci_next;
-		cpu_info_list->ci_next = ci;
+		ci_last = cpu_info_list;
+		while (ci_last->ci_next != NULL)
+			ci_last = ci_last->ci_next;
+		ci_last->ci_next = ci;
 		ci->ci_flags |= CPUF_AP;
 		ncpus++;
 	}
@@ -248,8 +381,6 @@ cpu_attach(struct device *parent, struct device *dev, void *aux)
 	} else {
 #endif
 		cpu_identify(ci);
-
-		hwcap |= HWCAP_ISA_G | HWCAP_ISA_C;
 
 		if (OF_getproplen(ci->ci_node, "clocks") > 0) {
 			cpu_node = ci->ci_node;
@@ -334,70 +465,122 @@ cpu_clockspeed(int *freq)
 }
 
 void
-cpu_cache_nop_range(paddr_t pa, psize_t len)
+cpu_cache_nop_range(vaddr_t va, vsize_t len)
 {
 }
 
+__attribute__((target("arch=+zicbom")))
 void
-thead_dcache_wbinv_range(paddr_t pa, psize_t len)
+zicbom_dcache_wbinv_range(vaddr_t va, vsize_t len)
 {
-	paddr_t end, mask;
+	vaddr_t end, mask;
 
-	mask = thead_dcache_line_size - 1;
-	end = (pa + len + mask) & ~mask;
-	pa &= ~mask;
+	mask = zicbom_dcache_line_size - 1;
+	end = (va + len + mask) & ~mask;
+	va &= ~mask;
 
-	while (pa != end) {
-		/* th.dcache.cipa a0 */
-		__asm volatile ("mv a0, %0; .long 0x02b5000b" :: "r"(pa)
-		    : "a0", "memory");
-		pa += thead_dcache_line_size;
+	while (va != end) {
+		__asm volatile ("cbo.flush (%0)" :: "r"(va) : "memory");
+		va += zicbom_dcache_line_size;
 	}
-	/* th.sync.s */
-	__asm volatile (".long 0x0190000b" ::: "memory");
+
+	__asm volatile ("fence iorw,iorw" ::: "memory");
 }
 
+__attribute__((target("arch=+zicbom")))
 void
-thead_dcache_inv_range(paddr_t pa, psize_t len)
+zicbom_dcache_inv_range(vaddr_t va, vsize_t len)
 {
-	paddr_t end, mask;
+	vaddr_t end, mask;
+
+	mask = zicbom_dcache_line_size - 1;
+	end = (va + len + mask) & ~mask;
+	va &= ~mask;
+
+	while (va != end) {
+		__asm volatile ("cbo.inval (%0)" :: "r"(va) : "memory");
+		va += zicbom_dcache_line_size;
+	}
+
+	__asm volatile ("fence iorw,iorw" ::: "memory");
+}
+
+__attribute__((target("arch=+zicbom")))
+void
+zicbom_dcache_wb_range(vaddr_t va, vsize_t len)
+{
+	vaddr_t end, mask;
+
+	mask = zicbom_dcache_line_size - 1;
+	end = (va + len + mask) & ~mask;
+	va &= ~mask;
+
+	while (va != end) {
+		__asm volatile ("cbo.clean (%0)" :: "r"(va) : "memory");
+		va += zicbom_dcache_line_size;
+	}
+
+	__asm volatile ("fence iorw,iorw" ::: "memory");
+}
+
+__attribute__((target("arch=+xtheadcmo,+xtheadsync")))
+void
+thead_dcache_wbinv_range(vaddr_t va, vsize_t len)
+{
+	vaddr_t end, mask;
 
 	mask = thead_dcache_line_size - 1;
-	end = (pa + len + mask) & ~mask;
-	pa &= ~mask;
+	end = (va + len + mask) & ~mask;
+	va &= ~mask;
 
-	while (pa != end) {
+	while (va != end) {
+		__asm volatile ("th.dcache.civa %0" :: "r"(va) : "memory");
+		va += thead_dcache_line_size;
+	}
+
+	__asm volatile ("th.sync.s" ::: "memory");
+}
+
+__attribute__((target("arch=+xtheadcmo,+xtheadsync")))
+void
+thead_dcache_inv_range(vaddr_t va, vsize_t len)
+{
+	vaddr_t end, mask;
+
+	mask = thead_dcache_line_size - 1;
+	end = (va + len + mask) & ~mask;
+	va &= ~mask;
+
+	while (va != end) {
 		/* th.dcache.ipa a0 */
-		__asm volatile ("mv a0, %0; .long 0x02a5000b" :: "r"(pa)
-		    : "a0", "memory");
-		pa += thead_dcache_line_size;
+		__asm volatile ("th.dcache.iva %0" :: "r"(va) : "memory");
+		va += thead_dcache_line_size;
 	}
-	/* th.sync.s */
-	__asm volatile (".long 0x0190000b" ::: "memory");
+
+	__asm volatile ("th.sync.s" ::: "memory");
 }
 
+__attribute__((target("arch=+xtheadcmo,+xtheadsync")))
 void
-thead_dcache_wb_range(paddr_t pa, psize_t len)
+thead_dcache_wb_range(vaddr_t va, vsize_t len)
 {
-	paddr_t end, mask;
+	vaddr_t end, mask;
 
 	mask = thead_dcache_line_size - 1;
-	end = (pa + len + mask) & ~mask;
-	pa &= ~mask;
+	end = (va + len + mask) & ~mask;
+	va &= ~mask;
 
-	while (pa != end) {
-		/* th.dcache.cpa a0 */
-		__asm volatile ("mv a0, %0; .long 0x0295000b" :: "r"(pa)
-		    : "a0", "memory");
-		pa += thead_dcache_line_size;
+	while (va != end) {
+		__asm volatile ("th.dcache.cva %0" :: "r"(va) : "memory");
+		va += thead_dcache_line_size;
 	}
-	/* th.sync.s */
-	__asm volatile (".long 0x0190000b" ::: "memory");
+
+	__asm volatile ("th.sync.s" ::: "memory");
 }
 
-void (*cpu_dcache_wbinv_range)(paddr_t, psize_t) = cpu_cache_nop_range;
-void (*cpu_dcache_inv_range)(paddr_t, psize_t) = cpu_cache_nop_range;
-void (*cpu_dcache_wb_range)(paddr_t, psize_t) = cpu_cache_nop_range;
+void (*cpu_dcache_wbinv_range)(vaddr_t, vsize_t) = cpu_cache_nop_range;
+void (*cpu_dcache_inv_range)(vaddr_t, vsize_t) = cpu_cache_nop_range;
+void (*cpu_dcache_wb_range)(vaddr_t, vsize_t) = cpu_cache_nop_range;
 
 #ifdef MULTIPROCESSOR
 

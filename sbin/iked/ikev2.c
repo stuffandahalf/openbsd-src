@@ -1,4 +1,4 @@
-/*	$OpenBSD: ikev2.c,v 1.395 2025/11/04 11:10:43 yasuoka Exp $	*/
+/*	$OpenBSD: ikev2.c,v 1.398 2026/05/05 09:23:06 deraadt Exp $	*/
 
 /*
  * Copyright (c) 2019 Tobias Heider <tobias.heider@stusta.de>
@@ -713,7 +713,7 @@ ikev2_recv(struct iked *env, struct iked_message *msg)
 	}
 
 	if (msg->msg_response) {
-		if (msg->msg_msgid > sa->sa_reqid) {
+		if (msg->msg_msgid + 1 != sa->sa_reqid) {
 			ikestat_inc(env, ikes_msg_rcvd_dropped);
 			return;
 		}
@@ -4452,6 +4452,9 @@ ikev2_init_create_child_sa(struct iked *env, struct iked_message *msg)
 	uint32_t			 spi32;
 	int				 pfs = 0, ret = -1;
 
+	if (!sa_stateok(sa, IKEV2_STATE_ESTABLISHED))
+		return -1;
+
 	if (!ikev2_msg_frompeer(msg) ||
 	    (sa->sa_stateflags & (IKED_REQ_CHILDSA|IKED_REQ_INF)) == 0)
 		return (0);
@@ -4916,6 +4919,9 @@ ikev2_resp_create_child_sa(struct iked *env, struct iked_message *msg)
 	int				 initiator, protoid, rekeying = 1;
 	int				 ret = -1;
 	int				 pfs = 0;
+
+	if (!sa_stateok(sa, IKEV2_STATE_ESTABLISHED))
+		return -1;
 
 	initiator = sa->sa_hdr.sh_initiator ? 1 : 0;
 
@@ -7019,7 +7025,9 @@ ikev2_print_id(struct iked_id *id, char *idstr, size_t idstrlen)
 	case IKEV2_ID_IPV4:
 		s4.sin_family = AF_INET;
 		s4.sin_len = sizeof(s4);
-		memcpy(&s4.sin_addr.s_addr, ptr, len);
+		if (len != (ssize_t)sizeof(s4.sin_addr.s_addr))
+			return (-1);
+		memcpy(&s4.sin_addr.s_addr, ptr, sizeof(s4.sin_addr.s_addr));
 
 		if (strlcat(idstr, print_addr(&s4), idstrlen) >= idstrlen)
 			return (-1);
@@ -7038,7 +7046,9 @@ ikev2_print_id(struct iked_id *id, char *idstr, size_t idstrlen)
 	case IKEV2_ID_IPV6:
 		s6.sin6_family = AF_INET6;
 		s6.sin6_len = sizeof(s6);
-		memcpy(&s6.sin6_addr, ptr, len);
+		if (len != (ssize_t)sizeof(s6.sin6_addr))
+			return (-1);
+		memcpy(&s6.sin6_addr, ptr, sizeof(s6.sin6_addr));
 
 		if (strlcat(idstr, print_addr(&s6), idstrlen) >= idstrlen)
 			return (-1);

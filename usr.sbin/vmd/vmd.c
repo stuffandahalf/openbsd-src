@@ -1,4 +1,4 @@
-/*	$OpenBSD: vmd.c,v 1.172 2026/02/22 22:54:54 dv Exp $	*/
+/*	$OpenBSD: vmd.c,v 1.174 2026/05/07 06:15:23 mlarkin Exp $	*/
 
 /*
  * Copyright (c) 2015 Reyk Floeter <reyk@openbsd.org>
@@ -41,7 +41,6 @@
 #include <dev/vmm/vmm.h>
 
 #include "proc.h"
-#include "atomicio.h"
 #include "vmd.h"
 
 __dead void usage(void);
@@ -1430,7 +1429,7 @@ vm_instance(struct privsep *ps, struct vmd_vm **vm_parent,
 	}
 	if (vmc_parent->vmc_insflags & VMOP_CREATE_INSTANCE) {
 		vmc->vmc_insowner.gid = vmc_parent->vmc_insowner.gid;
-		vmc->vmc_insowner.uid = vmc_parent->vmc_insowner.gid;
+		vmc->vmc_insowner.uid = vmc_parent->vmc_insowner.uid;
 		vmc->vmc_insflags = vmc_parent->vmc_insflags;
 	} else {
 		vmc->vmc_insowner.gid = 0;

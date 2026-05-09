@@ -1,4 +1,4 @@
-/*	$OpenBSD: rde_attr.c,v 1.141 2026/03/17 09:29:29 claudio Exp $ */
+/*	$OpenBSD: rde_attr.c,v 1.144 2026/05/07 20:35:19 claudio Exp $ */
 
 /*
  * Copyright (c) 2004 Claudio Jeker <claudio@openbsd.org>
@@ -32,7 +32,7 @@
 #include "chash.h"
 
 int
-attr_writebuf(struct ibuf *buf, uint8_t flags, uint8_t type, void *data,
+attr_writebuf(struct ibuf *buf, uint8_t flags, uint8_t type, const void *data,
     uint16_t data_len)
 {
 	u_char	hdr[4];
@@ -95,7 +95,7 @@ int
 attr_optadd(struct rde_aspath *asp, uint8_t flags, uint8_t type,
     void *data, uint16_t len)
 {
-	uint8_t		 l;
+	unsigned int	 l;
 	struct attr	*a, *t;
 	struct attr	**p;
 	uint64_t	 h;
@@ -137,6 +137,8 @@ attr_optadd(struct rde_aspath *asp, uint8_t flags, uint8_t type,
 		fatalx("attr_optadd: attribute overflow");
 
 	l = bin_of_attrs(asp->others_len + 1);
+	if (l > UCHAR_MAX)
+		l = UCHAR_MAX;
 	if ((p = reallocarray(asp->others, l, sizeof(struct attr *))) == NULL)
 		fatal("%s", __func__);
 	memset(&p[asp->others_len], 0, (l - asp->others_len) * sizeof(*p));
@@ -150,7 +152,7 @@ attr_optadd(struct rde_aspath *asp, uint8_t flags, uint8_t type,
 struct attr *
 attr_optget(const struct rde_aspath *asp, uint8_t type)
 {
-	uint8_t l;
+	unsigned int l;
 
 	for (l = 0; l < asp->others_len; l++) {
 		if (asp->others[l] == NULL)
@@ -166,7 +168,7 @@ attr_optget(const struct rde_aspath *asp, uint8_t type)
 void
 attr_copy(struct rde_aspath *t, const struct rde_aspath *s)
 {
-	uint8_t l;
+	unsigned int l;
 
 	if (t->others != NULL)
 		attr_freeall(t);
@@ -206,22 +208,25 @@ attr_eq(const struct attr *oa, const struct attr *ob)
 int
 attr_equal(const struct rde_aspath *a, const struct rde_aspath *b)
 {
-	uint8_t l;
+	unsigned int l;
 
 	if (a->others_len != b->others_len)
 		return (0);
-	for (l = 0; l < a->others_len; l++)
+	for (l = 0; l < a->others_len; l++) {
 		if (a->others[l] != b->others[l])
 			return (0);
+		if (a->others[l] == NULL)
+			break;
+	}
 	return (1);
 }
 
 void
 attr_free(struct rde_aspath *asp, struct attr *attr)
 {
-	uint8_t l;
+	unsigned int l;
 
-	for (l = 0; l < asp->others_len; l++)
+	for (l = 0; l < asp->others_len; l++) {
 		if (asp->others[l] == attr) {
 			attr_put(asp->others[l]);
 			for (++l; l < asp->others_len; l++)
@@ -229,6 +234,9 @@ attr_free(struct rde_aspath *asp, struct attr *attr)
 			asp->others[asp->others_len - 1] = NULL;
 			return;
 		}
+		if (asp->others[l] == NULL)
+			break;
+	}
 
 	/* no realloc() because the slot may be reused soon */
 }
@@ -236,7 +244,7 @@ attr_free(struct rde_aspath *asp, struct attr *attr)
 void
 attr_freeall(struct rde_aspath *asp)
 {
-	uint8_t l;
+	unsigned int l;
 
 	for (l = 0; l < asp->others_len; l++)
 		attr_put(asp->others[l]);
@@ -351,7 +359,7 @@ aspath_compare(const struct aspath *a1, const struct aspath *a2)
 }
 
 struct aspath *
-aspath_get(void *data, uint16_t len)
+aspath_get(const void *data, uint16_t len)
 {
 	struct aspath		*aspath;
 
@@ -403,9 +411,10 @@ aspath_put(struct aspath *aspath)
  * convert a 4 byte aspath to a 2 byte one.
  */
 u_char *
-aspath_deflate(u_char *data, uint16_t *len, int *flagnew)
+aspath_deflate(const u_char *data, uint16_t *len, int *flagnew)
 {
-	uint8_t		*seg, *nseg, *ndata = NULL;
+	const uint8_t	*seg;
+	uint8_t		*nseg, *ndata = NULL;
 	uint32_t	 as;
 	int		 i;
 	uint16_t	 seg_size, olen, nlen;

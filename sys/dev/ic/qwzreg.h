@@ -1,4 +1,4 @@
-/*	$OpenBSD: qwzreg.h,v 1.11 2024/12/23 00:12:44 patrick Exp $	*/
+/*	$OpenBSD: qwzreg.h,v 1.13 2026/04/26 19:25:08 mglocker Exp $	*/
 
 /*
  * Copyright (c) 2021-2022, Qualcomm Innovation Center, Inc.
@@ -1957,6 +1957,8 @@ enum wmi_tlv_tag {
 	WMI_TAG_MAX
 };
 
+#define WMI_TAG_SERVICE_READY_EXT2_EVENT	0x334
+
 enum wmi_tlv_service {
 	WMI_TLV_SERVICE_BEACON_OFFLOAD = 0,
 	WMI_TLV_SERVICE_SCAN_OFFLOAD = 1,
@@ -2190,6 +2192,7 @@ enum wmi_tlv_service {
 	WMI_TLV_SERVICE_BIOS_SAR_SUPPORT = 326,
 	WMI_TLV_SERVICE_SUPPORT_11D_FOR_HOST_SCAN = 357,
 	WMI_TLV_SERVICE_WMSK_COMPACTION_RX_TLVS = 361,
+	WMI_TLV_SERVICE_PEER_METADATA_V1A_V1B_SUPPORT = 365,
 
 	/* The third 128 bits */
 	WMI_MAX_EXT2_SERVICE = 384
@@ -2479,6 +2482,7 @@ struct wmi_init_cmd {
 #define WMI_RSRC_CFG_FLAG1_BSS_CHANNEL_INFO_64 BIT(5)
 #define WMI_RSRC_CFG_FLAG2_CALC_NEXT_DTIM_COUNT_SET BIT(9)
 #define WMI_RSRC_CFG_FLAG1_ACK_RSSI BIT(18)
+#define WMI_RSRC_CFG_FLAGS2_RX_PEER_METADATA_VERSION GENMASK(5, 4)
 
 #define WMI_CFG_HOST_SERVICE_FLAG_REG_CC_EXT 4
 
@@ -2541,7 +2545,6 @@ struct wmi_resource_config {
 	uint32_t sched_params;
 	uint32_t twt_ap_pdev_count;
 	uint32_t twt_ap_sta_count;
-#ifdef notyet /* 6 GHz support */
 	uint32_t max_nlo_ssids;
 	uint32_t num_pkt_filters;
 	uint32_t num_max_sta_vdevs;
@@ -2554,7 +2557,6 @@ struct wmi_resource_config {
 	uint32_t max_rnr_neighbours;
 	uint32_t ema_max_vap_cnt;
 	uint32_t ema_max_profile_period;
-#endif
 } __packed;
 
 struct wmi_service_ready_event {
@@ -2607,6 +2609,19 @@ struct wmi_service_ready_ext_event {
 	uint32_t max_nlo_ssids;
 	uint32_t max_bssid_indicator;
 	uint32_t he_cap_info_ext;
+} __packed;
+
+#define WMI_TARGET_CAP_FLAGS_RX_PEER_METADATA_VERSION	GENMASK(1, 0)
+
+struct wmi_service_ready_ext2_event {
+	uint32_t reg_db_version;
+	uint32_t hw_min_max_tx_power_2ghz;
+	uint32_t hw_min_max_tx_power_5ghz;
+	uint32_t chwidth_num_peer_caps;
+	uint32_t preamble_puncture_bw;
+	uint32_t max_user_per_ppdu_ofdma;
+	uint32_t max_user_per_ppdu_mumimo;
+	uint32_t target_cap_flags;
 } __packed;
 
 struct wmi_soc_mac_phy_hw_mode_caps {
@@ -8221,7 +8236,6 @@ enum hal_rx_msdu_desc_reo_dest_ind {
 
 struct rx_msdu_desc {
 	uint32_t info0;
-	uint32_t rsvd0;
 } __packed;
 
 /* rx_msdu_desc
@@ -8391,33 +8405,21 @@ enum hal_reo_dest_ring_error_code {
 	HAL_REO_DEST_RING_ERROR_CODE_MAX,
 };
 
-#define HAL_REO_DEST_RING_INFO0_QUEUE_ADDR_HI		GENMASK(7, 0)
-#define HAL_REO_DEST_RING_INFO0_BUFFER_TYPE		(1 << 8)
-#define HAL_REO_DEST_RING_INFO0_PUSH_REASON		GENMASK(10, 9)
-#define HAL_REO_DEST_RING_INFO0_ERROR_CODE		GENMASK(15, 11)
-#define HAL_REO_DEST_RING_INFO0_RX_QUEUE_NUM		GENMASK(31, 16)
-
-#define HAL_REO_DEST_RING_INFO1_REORDER_INFO_VALID	(1 << 0)
-#define HAL_REO_DEST_RING_INFO1_REORDER_OPCODE		GENMASK(4, 1)
-#define HAL_REO_DEST_RING_INFO1_REORDER_SLOT_IDX	GENMASK(12, 5)
-
-#define HAL_REO_DEST_RING_INFO2_RING_ID			GENMASK(27, 20)
-#define HAL_REO_DEST_RING_INFO2_LOOPING_COUNT		GENMASK(31, 28)
+/* wifi7 / WCN7850 REO destination ring info0 */
+#define HAL_REO_DEST_RING_INFO0_PUSH_REASON		GENMASK(2, 1)
+#define HAL_REO_DEST_RING_INFO0_ERROR_CODE		GENMASK(7, 3)
+#define HAL_REO_DEST_RING_INFO0_BUFFER_TYPE		BIT(0)
+#define HAL_REO_DEST_RING_INFO0_SRC_LINK_ID		GENMASK(15, 13)
+#define HAL_REO_DEST_RING_INFO0_RING_ID			GENMASK(27, 20)
+#define HAL_REO_DEST_RING_INFO0_LOOPING_COUNT		GENMASK(31, 28)
 
 struct hal_reo_dest_ring {
 	struct ath12k_buffer_addr buf_addr_info;
 	struct rx_mpdu_desc rx_mpdu_info;
 	struct rx_msdu_desc rx_msdu_info;
-	uint32_t queue_addr_lo;
+	uint32_t buf_va_lo;
+	uint32_t buf_va_hi;
 	uint32_t info0; /* %HAL_REO_DEST_RING_INFO0_ */
-	uint32_t info1; /* %HAL_REO_DEST_RING_INFO1_ */
-	uint32_t rsvd0;
-	uint32_t rsvd1;
-	uint32_t rsvd2;
-	uint32_t rsvd3;
-	uint32_t rsvd4;
-	uint32_t rsvd5;
-	uint32_t info2; /* %HAL_REO_DEST_RING_INFO2_ */
 } __packed;
 
 /* hal_reo_dest_ring
@@ -8828,39 +8830,61 @@ struct hal_reo_flush_cache {
 	uint32_t rsvd0[6];
 } __packed;
 
-#define HAL_TCL_DATA_CMD_INFO0_DESC_TYPE	BIT(0)
-#define HAL_TCL_DATA_CMD_INFO0_EPD		BIT(1)
-#define HAL_TCL_DATA_CMD_INFO0_ENCAP_TYPE	GENMASK(3, 2)
-#define HAL_TCL_DATA_CMD_INFO0_ENCRYPT_TYPE	GENMASK(7, 4)
-#define HAL_TCL_DATA_CMD_INFO0_SRC_BUF_SWAP	BIT(8)
-#define HAL_TCL_DATA_CMD_INFO0_LNK_META_SWAP	BIT(9)
-#define HAL_TCL_DATA_CMD_INFO0_SEARCH_TYPE	GENMASK(13, 12)
-#define HAL_TCL_DATA_CMD_INFO0_ADDR_EN		GENMASK(15, 14)
-#define HAL_TCL_DATA_CMD_INFO0_CMD_NUM		GENMASK(31, 16)
+/*
+ * WCN7850 / ath12k WiFi7 TCL data descriptor layout. The OLDER
+ * ath11k/ath12k-non-WiFi7 layout had encap_type/encrypt_type/search_type/
+ * addr_en encoded inline in info0; the WiFi7 hardware moves these to a
+ * pre-configured TX bank addressed by bank_id. The descriptor itself
+ * carries DESC_TYPE | BANK_ID | DATA_LEN | TID | VDEV_ID | search_index.
+ */
+#define HAL_TCL_DATA_CMD_INFO0_CMD_TYPE		BIT(0)
+#define HAL_TCL_DATA_CMD_INFO0_DESC_TYPE	BIT(1)
+#define HAL_TCL_DATA_CMD_INFO0_BANK_ID		GENMASK(7, 2)
+#define HAL_TCL_DATA_CMD_INFO0_TX_NOTIFY_FRAME	GENMASK(10, 8)
+#define HAL_TCL_DATA_CMD_INFO0_HDR_LEN_READ_SEL	BIT(11)
+#define HAL_TCL_DATA_CMD_INFO0_BUF_TIMESTAMP	GENMASK(30, 12)
+#define HAL_TCL_DATA_CMD_INFO0_BUF_TIMESTAMP_VLD	BIT(31)
 
-#define HAL_TCL_DATA_CMD_INFO1_DATA_LEN		GENMASK(15, 0)
-#define HAL_TCL_DATA_CMD_INFO1_IP4_CKSUM_EN	BIT(16)
-#define HAL_TCL_DATA_CMD_INFO1_UDP4_CKSUM_EN	BIT(17)
-#define HAL_TCL_DATA_CMD_INFO1_UDP6_CKSUM_EN	BIT(18)
-#define HAL_TCL_DATA_CMD_INFO1_TCP4_CKSUM_EN	BIT(19)
-#define HAL_TCL_DATA_CMD_INFO1_TCP6_CKSUM_EN	BIT(20)
-#define HAL_TCL_DATA_CMD_INFO1_TO_FW		BIT(21)
-#define HAL_TCL_DATA_CMD_INFO1_PKT_OFFSET	GENMASK(31, 23)
+#define HAL_TCL_DATA_CMD_INFO1_CMD_NUM		GENMASK(31, 16)
 
-#define HAL_TCL_DATA_CMD_INFO2_BUF_TIMESTAMP		GENMASK(18, 0)
-#define HAL_TCL_DATA_CMD_INFO2_BUF_T_VALID		BIT(19)
-#define HAL_IPQ8074_TCL_DATA_CMD_INFO2_MESH_ENABLE	BIT(20)
-#define HAL_TCL_DATA_CMD_INFO2_TID_OVERWRITE		BIT(21)
-#define HAL_TCL_DATA_CMD_INFO2_TID			GENMASK(25, 22)
-#define HAL_TCL_DATA_CMD_INFO2_LMAC_ID			GENMASK(27, 26)
+#define HAL_TCL_DATA_CMD_INFO2_DATA_LEN		GENMASK(15, 0)
+#define HAL_TCL_DATA_CMD_INFO2_IP4_CKSUM_EN	BIT(16)
+#define HAL_TCL_DATA_CMD_INFO2_UDP4_CKSUM_EN	BIT(17)
+#define HAL_TCL_DATA_CMD_INFO2_UDP6_CKSUM_EN	BIT(18)
+#define HAL_TCL_DATA_CMD_INFO2_TCP4_CKSUM_EN	BIT(19)
+#define HAL_TCL_DATA_CMD_INFO2_TCP6_CKSUM_EN	BIT(20)
+#define HAL_TCL_DATA_CMD_INFO2_TO_FW		BIT(21)
+#define HAL_TCL_DATA_CMD_INFO2_PKT_OFFSET	GENMASK(31, 23)
 
-#define HAL_TCL_DATA_CMD_INFO3_DSCP_TID_TABLE_IDX	GENMASK(5, 0)
-#define HAL_TCL_DATA_CMD_INFO3_SEARCH_INDEX		GENMASK(25, 6)
-#define HAL_TCL_DATA_CMD_INFO3_CACHE_SET_NUM		GENMASK(29, 26)
-#define HAL_QCN9074_TCL_DATA_CMD_INFO3_MESH_ENABLE	GENMASK(31, 30)
+#define HAL_TCL_DATA_CMD_INFO3_TID_OVERWRITE	BIT(0)
+#define HAL_TCL_DATA_CMD_INFO3_FLOW_OVERRIDE_EN	BIT(1)
+#define HAL_TCL_DATA_CMD_INFO3_CLASSIFY_INFO_SEL	GENMASK(3, 2)
+#define HAL_TCL_DATA_CMD_INFO3_TID		GENMASK(7, 4)
+#define HAL_TCL_DATA_CMD_INFO3_FLOW_OVERRIDE	BIT(8)
+#define HAL_TCL_DATA_CMD_INFO3_PMAC_ID		GENMASK(10, 9)
+#define HAL_TCL_DATA_CMD_INFO3_MSDU_COLOR	GENMASK(12, 11)
+#define HAL_TCL_DATA_CMD_INFO3_VDEV_ID		GENMASK(31, 24)
 
-#define HAL_TCL_DATA_CMD_INFO4_RING_ID			GENMASK(27, 20)
-#define HAL_TCL_DATA_CMD_INFO4_LOOPING_COUNT		GENMASK(31, 28)
+#define HAL_TCL_DATA_CMD_INFO4_SEARCH_INDEX	GENMASK(19, 0)
+#define HAL_TCL_DATA_CMD_INFO4_CACHE_SET_NUM	GENMASK(23, 20)
+#define HAL_TCL_DATA_CMD_INFO4_IDX_LOOKUP_OVERRIDE	BIT(24)
+
+#define HAL_TCL_DATA_CMD_INFO5_RING_ID		GENMASK(27, 20)
+#define HAL_TCL_DATA_CMD_INFO5_LOOPING_COUNT	GENMASK(31, 28)
+
+/* Per-bank config for HAL_TCL_SW_CONFIG_BANK_ADDR + 4 * bank_id. */
+#define HAL_TX_BANK_CONFIG_EPD			BIT(0)
+#define HAL_TX_BANK_CONFIG_ENCAP_TYPE		GENMASK(2, 1)
+#define HAL_TX_BANK_CONFIG_ENCRYPT_TYPE		GENMASK(6, 3)
+#define HAL_TX_BANK_CONFIG_SRC_BUFFER_SWAP	BIT(7)
+#define HAL_TX_BANK_CONFIG_LINK_META_SWAP	BIT(8)
+#define HAL_TX_BANK_CONFIG_INDEX_LOOKUP_EN	BIT(9)
+#define HAL_TX_BANK_CONFIG_ADDRX_EN		BIT(10)
+#define HAL_TX_BANK_CONFIG_ADDRY_EN		BIT(11)
+#define HAL_TX_BANK_CONFIG_MESH_EN		GENMASK(13, 12)
+#define HAL_TX_BANK_CONFIG_VDEV_ID_CHECK_EN	BIT(14)
+#define HAL_TX_BANK_CONFIG_PMAC_ID		GENMASK(16, 15)
+#define HAL_TX_BANK_CONFIG_DSCP_TIP_MAP_ID	GENMASK(22, 17)
 
 enum hal_encrypt_type {
 	HAL_ENCRYPT_TYPE_WEP_40,
@@ -12366,7 +12390,13 @@ struct hal_rx_desc_qcn9274_compact {
 	uint8_t msdu_payload[];
 } __packed;
 
-#define RX_BE_PADDING0_BYTES 8
+/*
+ * Empirically observed on WCN7850 hw2.0 fw 0x110cffff: the FW writes
+ * mpdu_start_tag at descriptor offset 216 (not 144 as a literal reading
+ * of upstream Linux/ath12k headers would suggest). The padding between
+ * msdu_end and mpdu_start_tag is 80 bytes, not 8.
+ */
+#define RX_BE_PADDING0_BYTES 80
 #define RX_BE_PADDING1_BYTES 8
 
 #define HAL_RX_BE_PKT_HDR_TLV_LEN 112
@@ -13152,6 +13182,7 @@ enum htt_t2h_msg_type {
 	HTT_T2H_MSG_TYPE_PPDU_STATS_IND = 0x1d,
 	HTT_T2H_MSG_TYPE_EXT_STATS_CONF = 0x1c,
 	HTT_T2H_MSG_TYPE_BKPRESSURE_EVENT_IND = 0x24,
+	HTT_T2H_MSG_TYPE_PRIMARY_LINK_PEER_MIGRATE_IND = 0x30,
 };
 
 #define HTT_TARGET_VERSION_MAJOR 3

@@ -1,4 +1,4 @@
-/*	$OpenBSD: getpwent.c,v 1.72 2026/03/10 02:55:34 deraadt Exp $ */
+/*	$OpenBSD: getpwent.c,v 1.74 2026/05/07 18:21:27 deraadt Exp $ */
 /*
  * Copyright (c) 2008 Theo de Raadt
  * Copyright (c) 1988, 1993
@@ -330,7 +330,7 @@ again:
 	if (__getpwent_has_yppw && (__ypmode != YPMODE_NONE)) {
 		const char *user, *host, *dom;
 		int keylen, datalen, r, s;
-		char *key, *data = NULL;
+		char *key = NULL, *data = NULL;
 
 		if (!__ypdomain)
 			yp_get_default_domain(&__ypdomain);
@@ -342,8 +342,9 @@ again:
 				    &key, &keylen, &data, &datalen);
 				free(__ypcurrent);
 				__ypcurrent = NULL;
-				if (r != 0) {
+				if (r != 0 || datalen >= buflen) {
 					__ypmode = YPMODE_NONE;
+					free(key);
 					free(data);
 					goto again;
 				}
@@ -353,8 +354,7 @@ again:
 				r = yp_first(__ypdomain, map,
 				    &__ypcurrent, &__ypcurrentlen,
 				    &data, &datalen);
-				if (r != 0 ||
-				    __ypcurrentlen > buflen) {
+				if (r != 0 || datalen >= buflen) {
 					__ypmode = YPMODE_NONE;
 					free(data);
 					goto again;
@@ -375,8 +375,7 @@ again:
 				    user, strlen(user), &data, &datalen);
 			} else
 				goto again;
-			if (r != 0 ||
-			    __ypcurrentlen > buflen) {
+			if (r != 0 || datalen >= buflen) {
 				/*
 				 * if the netgroup is invalid, keep looking
 				 * as there may be valid users later on.
@@ -394,8 +393,7 @@ again:
 				__ypmode = YPMODE_NONE;
 				free(name);
 				name = NULL;
-				if (r != 0 ||
-				    __ypcurrentlen > buflen) {
+				if (r != 0 || datalen >= buflen) {
 					free(data);
 					goto again;
 				}
@@ -599,7 +597,7 @@ __yppwlookup(int lookup, char *name, uid_t uid, struct passwd *pw,
 				r = yp_match(__ypdomain, map,
 				    name, strlen(name),
 				    &ypcurrent, &ypcurrentlen);
-				if (r != 0 || ypcurrentlen > buflen) {
+				if (r != 0 || ypcurrentlen >= buflen) {
 					free(ypcurrent);
 					ypcurrent = NULL;
 					continue;
@@ -623,7 +621,7 @@ pwnam_netgrp:
 						    &ypcurrent, &ypcurrentlen);
 					} else
 						goto pwnam_netgrp;
-					if (r != 0 || ypcurrentlen > buflen) {
+					if (r != 0 || ypcurrentlen >= buflen) {
 						free(ypcurrent);
 						ypcurrent = NULL;
 						/*
@@ -642,7 +640,7 @@ pwnam_netgrp:
 				r = yp_match(__ypdomain, map,
 				    user, strlen(user),
 				    &ypcurrent, &ypcurrentlen);
-				if (r != 0 || ypcurrentlen > buflen) {
+				if (r != 0 || ypcurrentlen >= buflen) {
 					free(ypcurrent);
 					ypcurrent = NULL;
 					continue;

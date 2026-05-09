@@ -1,4 +1,4 @@
-/*	$OpenBSD: rde_peer.c,v 1.70 2026/03/02 12:08:30 claudio Exp $ */
+/*	$OpenBSD: rde_peer.c,v 1.72 2026/05/08 12:03:50 tb Exp $ */
 
 /*
  * Copyright (c) 2019 Claudio Jeker <claudio@openbsd.org>
@@ -192,11 +192,11 @@ peer_add(uint32_t id, struct peer_config *p_conf, struct filter_head *rules)
 	do {
 		struct rde_peer *p;
 
+		while ((peer->path_id_tx = arc4random() << 1) == 0)
+			continue;
 		conflict = 0;
-		peer->path_id_tx = arc4random() << 1;
 		RB_FOREACH(p, peer_tree, &peertable) {
-			if (peer->path_id_tx == 0 ||
-			    p->path_id_tx == peer->path_id_tx) {
+			if (p->path_id_tx == peer->path_id_tx) {
 				conflict = 1;
 				break;
 			}
@@ -428,7 +428,7 @@ peer_flush_upcall(struct rib_entry *re, void *arg)
 void
 peer_up(struct rde_peer *peer, struct session_up *sup)
 {
-	uint8_t	 i;
+	u_int	 i;
 	int force_sync = 1;
 
 	if (peer->state == PEER_ERR) {
@@ -568,7 +568,7 @@ peer_flush(struct rde_peer *peer, uint8_t aid, monotime_t staletime)
 
 	/* every route is gone so reset staletime */
 	if (aid == AID_UNSPEC) {
-		uint8_t i;
+		u_int i;
 		for (i = AID_MIN; i < AID_MAX; i++)
 			peer->staletime[i] = monotime_clear();
 	} else {

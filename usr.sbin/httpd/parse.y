@@ -1,4 +1,4 @@
-/*	$OpenBSD: parse.y,v 1.131 2026/03/02 19:24:58 rsadowski Exp $	*/
+/*	$OpenBSD: parse.y,v 1.134 2026/05/17 10:56:41 kirill Exp $	*/
 
 /*
  * Copyright (c) 2020 Matthias Pressfreund <mpfr@fn.de>
@@ -142,7 +142,7 @@ typedef struct {
 %token	TIMEOUT TLS TYPE TYPES HSTS MAXAGE SUBDOMAINS DEFAULT PRELOAD REQUEST
 %token	ERROR INCLUDE AUTHENTICATE WITH BLOCK DROP RETURN PASS REWRITE
 %token	CA CLIENT CRL OPTIONAL PARAM FORWARDED FOUND NOT
-%token	ERRDOCS GZIPSTATIC BANNER
+%token	ERRDOCS GZIPSTATIC BANNER STATIC_CACHE_CONTROL
 %token	<v.string>	STRING
 %token  <v.number>	NUMBER
 %type	<v.port>	port
@@ -275,7 +275,8 @@ server		: SERVER optmatch STRING	{
 			    SERVER_REQUESTTIMEOUT;
 			s->srv_conf.maxrequests = SERVER_MAXREQUESTS;
 			s->srv_conf.maxrequestbody = SERVER_MAXREQUESTBODY;
-			s->srv_conf.flags = SRVFLAG_LOG;
+			s->srv_conf.flags = SRVFLAG_LOG |
+			    SRVFLAG_STATIC_CACHE_CONTROL;
 			if ($2)
 				s->srv_conf.flags |= SRVFLAG_SERVER_MATCH;
 			s->srv_conf.logformat = LOG_FORMAT_COMMON;
@@ -558,6 +559,7 @@ serveroptsl	: LISTEN ON STRING opttls port	{
 		| root
 		| directory
 		| banner
+		| static_cache_control
 		| logformat
 		| fastcgi
 		| authenticate
@@ -646,7 +648,7 @@ serveroptsl	: LISTEN ON STRING opttls port	{
 			SPLAY_INIT(&srv->srv_clients);
 		} '{' optnl serveropts_l '}'	{
 			struct server	*s = NULL;
-			uint32_t	 f;
+			uint64_t	 f;
 
 			f = SRVFLAG_LOCATION_FOUND |
 			    SRVFLAG_LOCATION_NOT_FOUND;
@@ -1244,9 +1246,21 @@ fcgiport	: NUMBER		{
 
 gzip_static	: NO GZIPSTATIC		{
 			srv->srv_conf.flags &= ~SRVFLAG_GZIP_STATIC;
+			srv->srv_conf.flags |= SRVFLAG_NO_GZIP_STATIC;
 		}
 		| GZIPSTATIC		{
 			srv->srv_conf.flags |= SRVFLAG_GZIP_STATIC;
+			srv->srv_conf.flags &= ~SRVFLAG_NO_GZIP_STATIC;
+		}
+		;
+
+static_cache_control	: NO STATIC_CACHE_CONTROL	{
+			srv_conf->flags &= ~SRVFLAG_STATIC_CACHE_CONTROL;
+			srv_conf->flags |= SRVFLAG_NO_STATIC_CACHE_CONTROL;
+		}
+		| STATIC_CACHE_CONTROL	{
+			srv_conf->flags &= ~SRVFLAG_NO_STATIC_CACHE_CONTROL;
+			srv_conf->flags |= SRVFLAG_STATIC_CACHE_CONTROL;
 		}
 		;
 
@@ -1509,6 +1523,7 @@ lookup(char *s)
 		{ "sack",		SACK },
 		{ "server",		SERVER },
 		{ "socket",		SOCKET },
+		{ "static-cache-control",	STATIC_CACHE_CONTROL },
 		{ "strip",		STRIP },
 		{ "style",		STYLE },
 		{ "subdomains",		SUBDOMAINS },

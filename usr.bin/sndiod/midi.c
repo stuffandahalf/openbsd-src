@@ -1,4 +1,4 @@
-/*	$OpenBSD: midi.c,v 1.32 2024/12/20 07:35:56 ratchov Exp $	*/
+/*	$OpenBSD: midi.c,v 1.36 2026/05/20 13:27:41 ratchov Exp $	*/
 /*
  * Copyright (c) 2008-2012 Alexandre Ratchov <alex@caoua.org>
  *
@@ -47,6 +47,7 @@ unsigned int midi_portnum = 0;
 
 struct midithru {
 	unsigned int txmask, rxmask;
+	int refcnt;
 #define MIDITHRU_NMAX 32
 } midithru[MIDITHRU_NMAX];
 
@@ -147,11 +148,11 @@ midi_del(struct midi *ep)
 void
 midi_link(struct midi *ep, struct midi *peer)
 {
-	if (ep->mode & MODE_MIDIOUT) {
+	if ((ep->mode & MODE_MIDIOUT) && (peer->mode & MODE_MIDIIN)) {
 		ep->txmask |= peer->self;
 		midi_tickets(ep);
 	}
-	if (ep->mode & MODE_MIDIIN) {
+	if ((ep->mode & MODE_MIDIIN) && (peer->mode & MODE_MIDIOUT)) {
 #ifdef DEBUG
 		if (ep->obuf.used > 0) {
 			logx(0, "midi%u: linked with non-empty buffer", ep->num);
@@ -160,6 +161,22 @@ midi_link(struct midi *ep, struct midi *peer)
 #endif
 		/* ep has empty buffer, so no need to call midi_tickets() */
 		peer->txmask |= ep->self;
+	}
+}
+
+/*
+ * disconnect two midi endpoints
+ */
+void
+midi_unlink(struct midi *ep, struct midi *peer)
+{
+	if (peer->txmask & ep->self) {
+		peer->txmask &= ~ep->self;
+		midi_tickets(peer);
+	}
+	if (ep->txmask & peer->self) {
+		ep->txmask &= ~peer->self;
+		midi_tickets(ep);
 	}
 }
 
@@ -212,25 +229,6 @@ midi_tag(struct midi *ep, unsigned int tag)
 		t->rxmask |= ep->self;
 	if (ep->mode & MODE_MIDIIN)
 		t->txmask |= ep->self;
-}
-
-/*
- * return the list of tags
- */
-unsigned int
-midi_tags(struct midi *ep)
-{
-	int i;
-	struct midithru *t;
-	unsigned int tags;
-
-	tags = 0;
-	for (i = 0; i < MIDITHRU_NMAX; i++) {
-		t = midithru + i;
-		if ((t->txmask | t->rxmask) & ep->self)
-			tags |= 1 << i;
-	}
-	return tags;
 }
 
 /*
@@ -523,6 +521,7 @@ port_new(char *path, unsigned int mode, int hold)
 	c->path = path;
 	c->state = PORT_CFG;
 	c->hold = hold;
+	c->refcnt = 0;
 	c->midi = midi_new(&port_midiops, c, mode);
 	c->num = midi_portnum++;
 	c->alt_next = c;
@@ -562,21 +561,17 @@ port_ref(struct port *c)
 #endif
 	if (c->state == PORT_CFG && !port_open(c))
 		return 0;
+	c->refcnt++;
 	return 1;
 }
 
 void
 port_unref(struct port *c)
 {
-	int i, rxmask;
-
 #ifdef DEBUG
 	logx(3, "midi%u: port released", c->midi->num);
 #endif
-	for (rxmask = 0, i = 0; i < MIDI_NEP; i++)
-		rxmask |= midi_ep[i].txmask;
-	if ((rxmask & c->midi->self) == 0 && c->midi->txmask == 0 &&
-	    c->state == PORT_INIT && !c->hold)
+	if (--c->refcnt == 0 && c->state == PORT_INIT)
 		port_drain(c);
 }
 

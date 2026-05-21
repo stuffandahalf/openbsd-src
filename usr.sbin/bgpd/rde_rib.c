@@ -1,4 +1,4 @@
-/*	$OpenBSD: rde_rib.c,v 1.292 2026/05/07 11:21:24 claudio Exp $ */
+/*	$OpenBSD: rde_rib.c,v 1.295 2026/05/20 20:32:50 claudio Exp $ */
 
 /*
  * Copyright (c) 2003, 2004 Claudio Jeker <claudio@openbsd.org>
@@ -756,6 +756,9 @@ path_copy(struct rde_aspath *dst, const struct rde_aspath *src)
 	dst->pftableid = pftable_ref(src->pftableid);
 	dst->origin = src->origin;
 
+	dst->aspa_state = src->aspa_state;
+	dst->aspa_generation = src->aspa_generation;
+
 	attr_copy(dst, src);
 
 	return (dst);
@@ -890,11 +893,13 @@ prefix_update(struct rib *rib, struct rde_peer *peer, uint32_t path_id,
 			if (p_filtered != filtered) {
 				struct rib_entry	*re;
 
+				re = rib_get_addr(rib, prefix, prefixlen);
+				/* remove prefix from rib */
+				prefix_evaluate(re, NULL, p);
 				/* toggle filtered flag */
 				p->flags ^= PREFIX_FLAG_FILTERED;
-				/* make route decision */
-				re = rib_get_addr(rib, prefix, prefixlen);
-				prefix_evaluate(re, p, p);
+				/* redo route decision */
+				prefix_evaluate(re, p, NULL);
 			}
 			return (0);
 		}
@@ -1469,6 +1474,7 @@ static inline int
 nexthop_cmp(struct nexthop *na, struct nexthop *nb)
 {
 	struct bgpd_addr	*a, *b;
+	int r;
 
 	if (na == nb)
 		return (0);
@@ -1491,7 +1497,16 @@ nexthop_cmp(struct nexthop *na, struct nexthop *nb)
 			return (-1);
 		return (0);
 	case AID_INET6:
-		return (memcmp(&a->v6, &b->v6, sizeof(struct in6_addr)));
+		r = memcmp(&a->v6, &b->v6, sizeof(struct in6_addr));
+		if (r != 0)
+			return r;
+		if (IN6_IS_ADDR_LINKLOCAL(&a->v6)) {
+			if (a->scope_id > b->scope_id)
+				return (1);
+			if (a->scope_id < b->scope_id)
+				return (-1);
+		}
+		return (0);
 	default:
 		fatalx("nexthop_cmp: %s is unsupported", aid2str(a->aid));
 	}

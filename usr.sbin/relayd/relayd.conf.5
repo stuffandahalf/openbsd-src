@@ -1,4 +1,4 @@
-.\"	$OpenBSD: relayd.conf.5,v 1.215 2026/02/18 22:27:03 kirill Exp $
+.\"	$OpenBSD: relayd.conf.5,v 1.218 2026/05/19 05:06:41 rsadowski Exp $
 .\"
 .\" Copyright (c) 2006 - 2016 Reyk Floeter <reyk@openbsd.org>
 .\" Copyright (c) 2006, 2007 Pierre-Yves Ritschard <pyr@openbsd.org>
@@ -15,7 +15,7 @@
 .\" ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 .\" OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 .\"
-.Dd $Mdocdate: February 18 2026 $
+.Dd $Mdocdate: May 19 2026 $
 .Dt RELAYD.CONF 5
 .Os
 .Sh NAME
@@ -727,7 +727,19 @@ Like the previous directive, but for redirections with rdr-to in
 .Op Ic tls
 .Xc
 Specify the address and port for the relay to listen on.
-The relay will accept incoming connections to the specified address.
+The relay will accept incoming connections to the specified address or
+addresses.
+If
+.Ar address
+resolves to multiple IPv4 or IPv6 addresses, such as an interface
+name, interface group, or DNS hostname,
+.Xr relayd 8
+will create a listener for each local address.
+For DNS hostnames, all resolved IPv4 and IPv6 addresses are considered,
+but only addresses configured on a local interface are used.
+Addresses that are not configured on a local interface are ignored.
+If none of the resolved addresses are local, the configuration is
+invalid.
 If the
 .Ic tls
 keyword is present, the relay will accept connections using the
@@ -998,7 +1010,16 @@ is used.
 The default is
 .Ic no edh .
 .It Ic keypair Ar name
-The relay will attempt to look up a private key in
+.It Ic keypair Ar name Op Ic cert Ar "path"
+.It Ic keypair Ar name Op Ic key Ar "path"
+.It Ic keypair Ar name Op Ic ocsp Ar "path"
+The relay will attempt to look up the TLS assets associated with
+.Ar name .
+The optional
+.Ar path
+arguments must be enclosed in double quotes and specify the absolute path to
+the respective file.
+By default, it searches for a private key in
 .Pa /etc/ssl/private/name:port.key
 and a public certificate in
 .Pa /etc/ssl/name:port.crt ,
@@ -1009,6 +1030,16 @@ If these files are not present, the relay will continue to look in
 .Pa /etc/ssl/private/name.key
 and
 .Pa /etc/ssl/name.crt .
+.Pp
+If the
+.Ic cert ,
+.Ic key ,
+or
+.Ic ocsp
+keywords are followed by an explicit
+.Ar path ,
+that file will be used instead of the default location.
+.Pp
 This option can be specified multiple times for TLS Server Name Indication.
 If not specified,
 a keypair will be loaded using the specified IP address of the relay as
@@ -1017,8 +1048,10 @@ See
 .Xr ssl 8
 for details about TLS server certificates.
 .Pp
-An optional OCSP staple file will be used during TLS handshakes with
-this server if it is found as a non-empty file in
+An optional OCSP staple file will be used during TLS handshakes.
+If no explicit
+.Ic ocsp Ar path
+is given, it will be searched as a non-empty file in
 .Pa /etc/ssl/name:port.ocsp
 or
 .Pa /etc/ssl/name.ocsp .
@@ -1204,6 +1237,7 @@ and can be either
 .Ic LOCK ,
 .Ic MERGE ,
 .Ic MKACTIVITY ,
+.Ic MKCALENDAR ,
 .Ic MKCOL ,
 .Ic MKREDIRECTREF ,
 .Ic MKWORKSPACE ,

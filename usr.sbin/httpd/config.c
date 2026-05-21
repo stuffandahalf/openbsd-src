@@ -1,4 +1,4 @@
-/*	$OpenBSD: config.c,v 1.69 2026/03/02 19:24:58 rsadowski Exp $	*/
+/*	$OpenBSD: config.c,v 1.72 2026/05/17 10:56:41 kirill Exp $	*/
 
 /*
  * Copyright (c) 2011 - 2015 Reyk Floeter <reyk@openbsd.org>
@@ -501,7 +501,7 @@ config_getserver_config(struct httpd *env, struct server *srv,
 #endif
 	struct server_config	*srv_conf, *parent;
 	uint8_t			*p = imsg->data;
-	unsigned int		 f;
+	uint64_t		 f;
 	size_t			 s;
 
 	if ((srv_conf = calloc(1, sizeof(*srv_conf))) == NULL)
@@ -560,6 +560,10 @@ config_getserver_config(struct httpd *env, struct server *srv,
 		}
 
 		f = SRVFLAG_FCGI|SRVFLAG_NO_FCGI;
+		if ((srv_conf->flags & f) == 0)
+			srv_conf->flags |= parent->flags & f;
+
+		f = SRVFLAG_GZIP_STATIC|SRVFLAG_NO_GZIP_STATIC;
 		if ((srv_conf->flags & f) == 0)
 			srv_conf->flags |= parent->flags & f;
 
@@ -628,6 +632,11 @@ config_getserver_config(struct httpd *env, struct server *srv,
 			(void)strlcpy(srv_conf->path, parent->path,
 			    sizeof(srv_conf->path));
 		}
+
+		f = SRVFLAG_STATIC_CACHE_CONTROL |
+		    SRVFLAG_NO_STATIC_CACHE_CONTROL;
+		if ((srv_conf->flags & f) == 0)
+			srv_conf->flags |= parent->flags & f;
 
 		f = SRVFLAG_SERVER_HSTS;
 		srv_conf->flags |= parent->flags & f;

@@ -1,4 +1,4 @@
-/*	$OpenBSD: rde.c,v 1.698 2026/05/08 12:03:50 tb Exp $ */
+/*	$OpenBSD: rde.c,v 1.702 2026/05/20 15:29:46 claudio Exp $ */
 
 /*
  * Copyright (c) 2003, 2004 Henning Brauer <henning@openbsd.org>
@@ -92,7 +92,7 @@ void		 rde_mark_prefixsets_dirty(struct rde_prefixset_head *,
 uint8_t		 rde_roa_validity(struct rde_prefixset *,
 		    struct bgpd_addr *, uint8_t, uint32_t);
 
-static void	 rde_peer_recv_eor(struct rde_peer *, uint8_t);
+static void	 rde_peer_recv_eor(struct rde_peer *, u_int);
 static void	 rde_peer_send_eor(struct rde_peer *, uint8_t);
 
 void		 network_add(struct network_config *, struct filterstate *);
@@ -3276,7 +3276,7 @@ rde_dump_ctx_new(struct ctl_show_rib_request *req, pid_t pid,
 	struct rib_entry	*re;
 	struct adjout_prefix	*p;
 	u_int			 error;
-	uint8_t			 hostplen, plen;
+	int			 hostplen, plen;
 	uint16_t		 rid;
 
 	if ((ctx = calloc(1, sizeof(*ctx))) == NULL) {
@@ -3342,6 +3342,7 @@ rde_dump_ctx_new(struct ctl_show_rib_request *req, pid_t pid,
 
 			do {
 				struct pt_entry *pte;
+				int found;
 
 				if (req->flags & F_SHORTER) {
 					for (plen = 0; plen <= req->prefixlen;
@@ -3370,13 +3371,30 @@ rde_dump_ctx_new(struct ctl_show_rib_request *req, pid_t pid,
 				if (pte == NULL)
 					continue;
 
-				/* dump all matching paths */
-				for (p = adjout_prefix_first(peer, pte);
-				    p != NULL;
-				    p = adjout_prefix_next(peer, pte, p)) {
-					rde_dump_adjout_upcall(peer, pte, p,
-					    ctx);
-				}
+				do {
+					/* dump all matching paths */
+					found = 0;
+					for (p = adjout_prefix_first(peer, pte);
+					    p != NULL;
+					    p = adjout_prefix_next(peer, pte,
+					    p)) {
+						rde_dump_adjout_upcall(peer,
+						    pte, p, ctx);
+						found = 1;
+					}
+					plen = pte->prefixlen - 1;
+					pte = NULL;
+					if (!found &&
+					    req->prefixlen == hostplen) {
+						while (plen >= 0) {
+							pte = pt_get(
+							    &req->prefix, plen);
+							if (pte != NULL)
+								break;
+							plen--;
+						}
+					}
+				} while (!found && pte != NULL);
 			} while ((peer = peer_match(&req->neighbor,
 			    peer->conf.id)));
 
@@ -3385,7 +3403,12 @@ rde_dump_ctx_new(struct ctl_show_rib_request *req, pid_t pid,
 			free(ctx);
 			return;
 		default:
-			fatalx("%s: unsupported imsg type", __func__);
+			log_warnx("%s: bad imsg type %d", __func__, req->type);
+			error = CTL_RES_OPNOTSUPP;
+			imsg_compose(ibuf_se_ctl, IMSG_CTL_RESULT, 0, pid, -1,
+			    &error, sizeof(error));
+			free(ctx);
+			return;
 		}
 
 		LIST_INSERT_HEAD(&rde_dump_h, ctx, entry);
@@ -4536,7 +4559,7 @@ rde_decisionflags(void)
 
 /* End-of-RIB marker, RFC 4724 */
 static void
-rde_peer_recv_eor(struct rde_peer *peer, uint8_t aid)
+rde_peer_recv_eor(struct rde_peer *peer, u_int aid)
 {
 	peer->stats.prefix_rcvd_eor++;
 	peer->recv_eor |= 1 << aid;

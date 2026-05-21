@@ -1,4 +1,4 @@
-/*	$OpenBSD: sndioctl.c,v 1.23 2026/02/27 08:26:16 ratchov Exp $	*/
+/*	$OpenBSD: sndioctl.c,v 1.25 2026/05/20 13:15:31 ratchov Exp $	*/
 /*
  * Copyright (c) 2014-2020 Alexandre Ratchov <alex@caoua.org>
  *
@@ -57,6 +57,7 @@ int parse_name(char **, char *);
 int parse_unit(char **, int *);
 int parse_val(char **, float *);
 int parse_node(char **, char *, int *);
+void parse_mode(char **, int *);
 int parse_modeval(char **, int *, float *);
 void dump(void);
 int cmd(char *);
@@ -607,8 +608,8 @@ parse_node(char **line, char *str, int *unit)
 /*
  * parse a decimal prefixed by the optional mode
  */
-int
-parse_modeval(char **line, int *rmode, float *rval)
+void
+parse_mode(char **line, int *rmode)
 {
 	char *p = *line;
 	unsigned mode;
@@ -629,6 +630,20 @@ parse_modeval(char **line, int *rmode, float *rval)
 	default:
 		mode = MODE_SET;
 	}
+	*line = p;
+	*rmode = mode;
+}
+
+/*
+ * parse a decimal prefixed by the optional mode
+ */
+int
+parse_modeval(char **line, int *rmode, float *rval)
+{
+	char *p = *line;
+	unsigned mode;
+
+	parse_mode(&p, &mode);
 	if (mode != MODE_TOGGLE) {
 		if (!parse_val(&p, rval))
 			return 0;
@@ -740,19 +755,22 @@ cmd(char *line)
 		}
 		break;
 	case SIOCTL_SEL:
-		if (*pos == '\0') {
+		if (*pos == '\0' || *pos == '+' || *pos == '-' || *pos == '!') {
 			fprintf(stderr, "%s.%s: expects value\n", astr, func);
 			exit(1);
 		}
 		/* FALLTHROUGH */
 	case SIOCTL_VEC:
 	case SIOCTL_LIST:
+		parse_mode(&pos, &mode);
 		for (i = g; i != NULL; i = nextpar(i)) {
 			if (!matchpar(i, astr, aunit))
 				continue;
-			for (e = i; e != NULL; e = nextent(e, 0)) {
-				e->newval = 0;
-				e->mode = MODE_SET;
+			if (mode == MODE_SET) {
+				for (e = i; e != NULL; e = nextent(e, 0)) {
+					e->newval = 0;
+					e->mode = MODE_SET;
+				}
 			}
 			npar++;
 		}
@@ -769,12 +787,11 @@ cmd(char *line)
 				return 0;
 			if (*pos == ':') {
 				pos++;
-				if (!parse_modeval(&pos, &mode, &val))
+				if (!parse_val(&pos, &val))
 					return 0;
-			} else {
+			} else
 				val = 1.;
-				mode = MODE_SET;
-			}
+
 			nent = 0;
 			for (i = g; i != NULL; i = nextpar(i)) {
 				if (!matchpar(i, astr, aunit))

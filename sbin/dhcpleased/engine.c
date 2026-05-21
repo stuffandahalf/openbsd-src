@@ -1,4 +1,4 @@
-/*	$OpenBSD: engine.c,v 1.61 2026/04/15 16:50:32 florian Exp $	*/
+/*	$OpenBSD: engine.c,v 1.64 2026/05/14 06:09:50 dgl Exp $	*/
 
 /*
  * Copyright (c) 2017, 2021 Florian Obser <florian@openbsd.org>
@@ -370,6 +370,8 @@ engine_dispatch_frontend(int fd, short event, void *bula)
 
 			if (imsg_get_data(&imsg, &imsg_dhcp,
 			    sizeof(imsg_dhcp)) == -1)
+				fatalx("%s: invalid %s", __func__, i2s(type));
+			if ((size_t)imsg_dhcp.len > sizeof(imsg_dhcp.packet))
 				fatalx("%s: invalid %s", __func__, i2s(type));
 
 			iface = get_dhcpleased_iface_by_id(imsg_dhcp.if_index);
@@ -1062,7 +1064,7 @@ parse_dhcp(struct dhcpleased_iface *iface, struct imsg_dhcp *dhcp)
 			while (slen > 0 && p[slen - 1] == '\0')
 				slen--;
 			/* slen might be 0 here, pretend option is not there. */
-			strvisx(hostname, p, slen, VIS_SAFE);
+			strvisx(hostname, p, slen, VIS_SAFE | VIS_NL);
 			if (log_getverbose() > 1)
 				log_debug("DHO_HOST_NAME: %s", hostname);
 			p += dho_len;
@@ -1081,7 +1083,7 @@ parse_dhcp(struct dhcpleased_iface *iface, struct imsg_dhcp *dhcp)
 			while (slen > 0 && p[slen - 1] == '\0')
 				slen--;
 			/* slen might be 0 here, pretend option is not there. */
-			strvisx(domainname, p, slen, VIS_SAFE);
+			strvisx(domainname, p, slen, VIS_SAFE | VIS_NL);
 			if (log_getverbose() > 1)
 				log_debug("DHO_DOMAIN_NAME: %s", domainname);
 			p += dho_len;
@@ -1362,7 +1364,7 @@ parse_dhcp(struct dhcpleased_iface *iface, struct imsg_dhcp *dhcp)
 
 		/* we made sure this is a string futher up */
 		strnvis(iface->file, dhcp_hdr->file, sizeof(iface->file),
-		    VIS_SAFE);
+		    VIS_SAFE | VIS_NL);
 
 		strlcpy(iface->domainname, domainname,
 		    sizeof(iface->domainname));
@@ -1780,6 +1782,7 @@ send_routes_withdraw(struct dhcpleased_iface *iface)
 	if (iface->requested_ip.s_addr == INADDR_ANY || iface->routes_len == 0)
 		return;
 
+	memset(&imsg, 0, sizeof(imsg));
 	imsg.if_index = iface->if_index;
 	imsg.rdomain = iface->rdomain;
 	imsg.addr = iface->requested_ip;

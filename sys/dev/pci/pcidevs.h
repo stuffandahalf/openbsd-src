@@ -2,7 +2,7 @@
  * THIS FILE AUTOMATICALLY GENERATED.  DO NOT EDIT.
  *
  * generated from:
- *	OpenBSD: pcidevs,v 1.2133 2026/04/06 23:59:43 jsg Exp 
+ *	OpenBSD: pcidevs,v 1.2139 2026/05/20 04:22:12 jsg Exp 
  */
 /*	$NetBSD: pcidevs,v 1.30 1997/06/24 06:20:24 thorpej Exp $	*/
 
@@ -709,14 +709,33 @@
 #define	PCI_PRODUCT_AMD_0F_ADDR	0x1101		/* 0Fh Address Map */
 #define	PCI_PRODUCT_AMD_0F_DRAM	0x1102		/* 0Fh DRAM Cfg */
 #define	PCI_PRODUCT_AMD_0F_MISC	0x1103		/* 0Fh Misc Cfg */
+#define	PCI_PRODUCT_AMD_1A_6X_PCIE_1	0x1110		/* 1Ah/6xh PCIE */
+#define	PCI_PRODUCT_AMD_1A_6X_PCIE_2	0x1111		/* 1Ah/6xh PCIE */
+#define	PCI_PRODUCT_AMD_1A_6X_PCIE_3	0x1112		/* 1Ah/6xh PCIE */
+#define	PCI_PRODUCT_AMD_1A_6X_XHCI_1	0x1118		/* 1Ah/6xh xHCI */
+#define	PCI_PRODUCT_AMD_1A_6X_XHCI_2	0x111c		/* 1Ah/6xh xHCI */
+#define	PCI_PRODUCT_AMD_1A_6X_XHCI_3	0x111e		/* 1Ah/6xh xHCI */
 #define	PCI_PRODUCT_AMD_1A_6X_USB4_1	0x1120		/* 1Ah/6xh USB4 */
 #define	PCI_PRODUCT_AMD_1A_6X_USB4_2	0x1121		/* 1Ah/6xh USB4 */
 #define	PCI_PRODUCT_AMD_1A_6X_RC	0x1122		/* 1Ah/6xh Root Complex */
+#define	PCI_PRODUCT_AMD_1A_6X_IOMMU	0x1123		/* 1Ah/6xh IOMMU */
+#define	PCI_PRODUCT_AMD_1A_6X_HB	0x1124		/* 1Ah/6xh Host */
+#define	PCI_PRODUCT_AMD_1A_6X_PCIE_4	0x1125		/* 1Ah/6xh PCIE */
+#define	PCI_PRODUCT_AMD_1A_6X_PCIE_5	0x1126		/* 1Ah/6xh PCIE */
+#define	PCI_PRODUCT_AMD_1A_6X_XHCI_4	0x1128		/* 1Ah/6xh xHCI */
 #define	PCI_PRODUCT_AMD_10_HT	0x1200		/* 10h HyperTransport */
 #define	PCI_PRODUCT_AMD_10_ADDR	0x1201		/* 10h Address Map */
 #define	PCI_PRODUCT_AMD_10_DRAM	0x1202		/* 10h DRAM Cfg */
 #define	PCI_PRODUCT_AMD_10_MISC	0x1203		/* 10h Misc Cfg */
 #define	PCI_PRODUCT_AMD_10_LINK	0x1204		/* 10h Link Cfg */
+#define	PCI_PRODUCT_AMD_1A_6X_DF_1	0x1248		/* 1Ah/6xh Data Fabric */
+#define	PCI_PRODUCT_AMD_1A_6X_DF_2	0x1249		/* 1Ah/6xh Data Fabric */
+#define	PCI_PRODUCT_AMD_1A_6X_DF_3	0x124a		/* 1Ah/6xh Data Fabric */
+#define	PCI_PRODUCT_AMD_1A_6X_DF_4	0x124b		/* 1Ah/6xh Data Fabric */
+#define	PCI_PRODUCT_AMD_1A_6X_DF_5	0x124c		/* 1Ah/6xh Data Fabric */
+#define	PCI_PRODUCT_AMD_1A_6X_DF_6	0x124d		/* 1Ah/6xh Data Fabric */
+#define	PCI_PRODUCT_AMD_1A_6X_DF_7	0x124e		/* 1Ah/6xh Data Fabric */
+#define	PCI_PRODUCT_AMD_1A_6X_DF_8	0x124f		/* 1Ah/6xh Data Fabric */
 #define	PCI_PRODUCT_AMD_19_78_DF_1	0x12f8		/* 19h/7xh Data Fabric */
 #define	PCI_PRODUCT_AMD_19_78_DF_2	0x12f9		/* 19h/7xh Data Fabric */
 #define	PCI_PRODUCT_AMD_19_78_DF_3	0x12fa		/* 19h/7xh Data Fabric */
@@ -992,6 +1011,8 @@
 #define	PCI_PRODUCT_AMD_14_NB_PM	0x1716		/* 14h NB Power */
 #define	PCI_PRODUCT_AMD_14_RESERVED_1	0x1718		/* 14h Reserved */
 #define	PCI_PRODUCT_AMD_14_RESERVED_2	0x1719		/* 14h Reserved */
+#define	PCI_PRODUCT_AMD_1A_6X_PSP	0x17e0		/* 1Ah/6xh PSP */
+#define	PCI_PRODUCT_AMD_1A_6X_NPU	0x17f0		/* 1Ah/6xh NPU */
 #define	PCI_PRODUCT_AMD_A1100_HB_1	0x1a00		/* A1100 Host */
 #define	PCI_PRODUCT_AMD_A1100_HB_2	0x1a01		/* A1100 Host */
 #define	PCI_PRODUCT_AMD_A1100_PCIE_1	0x1a02		/* A1100 PCIE */
@@ -1217,6 +1238,7 @@
 #define	PCI_PRODUCT_APPLE_BCM5701	0x1645		/* BCM5701 */
 #define	PCI_PRODUCT_APPLE_NVME1	0x2001		/* NVMe */
 #define	PCI_PRODUCT_APPLE_NVME2	0x2003		/* NVMe */
+#define	PCI_PRODUCT_APPLE_NVME3	0x2005		/* NVMe */
 
 /* Aquantia Corp. */
 #define	PCI_PRODUCT_AQUANTIA_AQC100	0x00b1		/* AQC100 */
@@ -2215,6 +2237,7 @@
 #define	PCI_PRODUCT_ATI_NAVI32_1	0x7470		/* Navi 32 */
 #define	PCI_PRODUCT_ATI_NAVI32_2	0x747e		/* Navi 32 */
 #define	PCI_PRODUCT_ATI_NAVI33_1	0x7480		/* Navi 33 */
+#define	PCI_PRODUCT_ATI_NAVI33_5	0x7481		/* Navi 33 */
 #define	PCI_PRODUCT_ATI_NAVI33_2	0x7483		/* Navi 33 */
 #define	PCI_PRODUCT_ATI_NAVI33_3	0x7489		/* Navi 33 */
 #define	PCI_PRODUCT_ATI_NAVI33_4	0x7499		/* Navi 33 */
@@ -6161,6 +6184,11 @@
 #define	PCI_PRODUCT_INTEL_ATS_M75	0x56c1		/* Flex 140 */
 #define	PCI_PRODUCT_INTEL_I219_LM24	0x57a0		/* I219-LM */
 #define	PCI_PRODUCT_INTEL_I219_V24	0x57a1		/* I219-V */
+#define	PCI_PRODUCT_INTEL_E610_VF	0x57ad		/* E610-VF */
+#define	PCI_PRODUCT_INTEL_E610_SFP	0x57af		/* E610-SFP */
+#define	PCI_PRODUCT_INTEL_E610_10G	0x57b0		/* E610-10G */
+#define	PCI_PRODUCT_INTEL_E610_2_5G	0x57b1		/* E610-2.5G */
+#define	PCI_PRODUCT_INTEL_E610_SGMII	0x57b2		/* E610-SGMII */
 #define	PCI_PRODUCT_INTEL_I219_LM25	0x57b3		/* I219-LM */
 #define	PCI_PRODUCT_INTEL_I219_V25	0x57b4		/* I219-V */
 #define	PCI_PRODUCT_INTEL_QEMU_NVME	0x5845		/* QEMU NVM Express Controller */
@@ -7989,6 +8017,7 @@
 #define	PCI_PRODUCT_MEDIATEK_MT7921K	0x0608		/* MT7921K */
 #define	PCI_PRODUCT_MEDIATEK_MT7922	0x0616		/* MT7922 */
 #define	PCI_PRODUCT_MEDIATEK_MT7921	0x7961		/* MT7921 */
+#define	PCI_PRODUCT_MEDIATEK_MT7920	0x7920		/* MT7920 */
 #define	PCI_PRODUCT_MEDIATEK_MT7925	0x7925		/* MT7925 */
 
 /* Meinberg Funkuhren */
@@ -9310,6 +9339,7 @@
 #define	PCI_PRODUCT_ROCKCHIP_RK3399	0x0100		/* RK3399 */
 #define	PCI_PRODUCT_ROCKCHIP_RK3528	0x3528		/* RK3528 */
 #define	PCI_PRODUCT_ROCKCHIP_RK3566	0x3566		/* RK3566 */
+#define	PCI_PRODUCT_ROCKCHIP_RK3576	0x3576		/* RK3576 */
 #define	PCI_PRODUCT_ROCKCHIP_RK3588	0x3588		/* RK3588 */
 
 /* Rockwell products */

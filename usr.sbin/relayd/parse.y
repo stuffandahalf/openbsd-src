@@ -1,4 +1,4 @@
-/*	$OpenBSD: parse.y,v 1.262 2026/04/06 09:14:54 kirill Exp $	*/
+/*	$OpenBSD: parse.y,v 1.264 2026/05/17 09:11:01 kirill Exp $	*/
 
 /*
  * Copyright (c) 2007 - 2014 Reyk Floeter <reyk@openbsd.org>
@@ -131,8 +131,10 @@ int		 host_dns(const char *, struct addresslist *,
 		    int, struct portrange *, const char *, int);
 int		 host_if(const char *, struct addresslist *,
 		    int, struct portrange *, const char *, int);
+int		 host_ifaddr(struct sockaddr_storage *, struct ifaddrs *);
 int		 host(const char *, struct addresslist *,
 		    int, struct portrange *, const char *, int);
+int		 host_local(struct addresslist *);
 void		 host_free(struct addresslist *);
 
 struct table	*table_inherit(struct table *);
@@ -140,6 +142,7 @@ int		 relay_id(struct relay *);
 struct relay	*relay_inherit(struct relay *, struct relay *);
 int		 getservice(char *);
 int		 is_if_in_group(const char *, const char *);
+static struct keyname *proto_keyname(char *);
 
 typedef struct {
 	union {
@@ -1342,20 +1345,93 @@ tlsflags	: SESSION TICKETS { proto->tickets = 1; }
 			free($3);
 		}
 		| KEYPAIR STRING		{
-			struct keyname	*name;
+			struct keyname	*kname = NULL;
 
-			if (strlen($2) >= PATH_MAX) {
-				yyerror("keypair name too long");
+			if ((kname = proto_keyname($2)) == NULL) {
 				free($2);
 				YYERROR;
 			}
-			if ((name = calloc(1, sizeof(*name))) == NULL) {
-				yyerror("calloc");
+			free($2);
+		}
+		| KEYPAIR STRING CERTIFICATE STRING {
+			struct keyname	*kname = NULL;
+
+			if ((kname = proto_keyname($2)) == NULL) {
 				free($2);
+				free($4);
 				YYERROR;
 			}
-			name->name = $2;
-			TAILQ_INSERT_TAIL(&proto->tlscerts, name, entry);
+
+			if (strlen($4) >= PATH_MAX) {
+				yyerror("keypair cert too long");
+				free($2);
+				free($4);
+				YYERROR;
+			}
+			if (strlcpy(kname->certificate, $4,
+			    sizeof(kname->certificate)) >=
+			    sizeof(kname->certificate)) {
+				yyerror("keypair certificate truncated");
+				free($2);
+				free($4);
+				YYERROR;
+			}
+			free($2);
+			free($4);
+		}
+		| KEYPAIR STRING KEY STRING {
+			struct keyname	*kname = NULL;
+
+			if ((kname = proto_keyname($2)) == NULL) {
+				free($2);
+				free($4);
+				YYERROR;
+			}
+
+			if (strlen($4) >= PATH_MAX) {
+				yyerror("keypair certificate key too long");
+				free($2);
+				free($4);
+				YYERROR;
+			}
+
+			if (strlcpy(kname->key, $4,
+			    sizeof(kname->key)) >=
+			    sizeof(kname->key)) {
+				yyerror("keypair certificate key truncated");
+				free($2);
+				free($4);
+				YYERROR;
+			}
+			free($2);
+			free($4);
+		}
+		| KEYPAIR STRING OCSP STRING {
+			struct keyname	*kname = NULL;
+
+			if ((kname = proto_keyname($2)) == NULL) {
+				free($2);
+				free($4);
+				YYERROR;
+			}
+
+			if (strlen($4) >= PATH_MAX) {
+				yyerror("keypair ocsp file too long");
+				free($2);
+				free($4);
+				YYERROR;
+			}
+
+			if (strlcpy(kname->ocsp, $4,
+			    sizeof(kname->ocsp)) >=
+			    sizeof(kname->ocsp)) {
+				yyerror("ocsp truncated");
+				free($2);
+				free($4);
+				YYERROR;
+			}
+			free($2);
+			free($4);
 		}
 		| CLIENT CA STRING		{
 			if (strlcpy(proto->tlsclientca, $3,
@@ -1850,7 +1926,7 @@ relay		: RELAY STRING	{
 		} '{' optnl relayopts_l '}'	{
 			struct relay		*r;
 			struct relay_config	*rlconf = &rlay->rl_conf;
-			struct keyname		*name;
+			struct keyname		*kname;
 
 			if (relay_findbyname(conf, rlconf->name) != NULL ||
 			    relay_findbyaddr(conf, rlconf) != NULL) {
@@ -1888,11 +1964,11 @@ relay		: RELAY STRING	{
 				    rlay->rl_conf.name);
 				YYERROR;
 			}
-			TAILQ_FOREACH(name, &rlay->rl_proto->tlscerts, entry) {
+			TAILQ_FOREACH(kname, &rlay->rl_proto->tlscerts, entry) {
 				if (relay_load_certfiles(conf,
-				    rlay, name->name) == -1) {
+				    rlay, kname) == -1) {
 					yyerror("cannot load keypair %s"
-					    " for relay %s", name->name,
+					    " for relay %s", kname->name,
 					    rlay->rl_conf.name);
 					YYERROR;
 				}
@@ -1921,35 +1997,60 @@ relayopts_l	: relayopts_l relayoptsl nl
 relayoptsl	: LISTEN ON STRING port opttls {
 			struct addresslist	 al;
 			struct address		*h;
-			struct relay		*r;
+			struct relay		*nr, *r;
+			int			 cnt = 0;
 
 			if (rlay->rl_conf.ss.ss_family != AF_UNSPEC) {
-				if ((r = calloc(1, sizeof (*r))) == NULL)
+				if ((r = calloc(1, sizeof(*r))) == NULL)
 					fatal("out of memory");
-				TAILQ_INSERT_TAIL(&relays, r, rl_entry);
 			} else
 				r = rlay;
 			if ($4.op != PF_OP_EQ) {
 				yyerror("invalid port");
 				free($3);
+				if (r != rlay)
+					free(r);
 				YYERROR;
 			}
 
 			TAILQ_INIT(&al);
-			if (host($3, &al, 1, &$4, NULL, -1) <= 0) {
+			if (host($3, &al, SRV_MAX_VIRTS, &$4, NULL, -1) <= 0) {
 				yyerror("invalid listen ip: %s", $3);
 				free($3);
+				if (r != rlay)
+					free(r);
+				YYERROR;
+			}
+			if (host_local(&al) == 0) {
+				yyerror("no local listen ip: %s", $3);
+				free($3);
+				host_free(&al);
+				if (r != rlay)
+					free(r);
 				YYERROR;
 			}
 			free($3);
-			h = TAILQ_FIRST(&al);
-			bcopy(&h->ss, &r->rl_conf.ss, sizeof(r->rl_conf.ss));
-			r->rl_conf.port = h->port.val[0];
-			if ($5) {
-				r->rl_conf.flags |= F_TLS;
-				conf->sc_conf.flags |= F_TLS;
+			TAILQ_FOREACH(h, &al, entry) {
+				if (cnt == 0) {
+					nr = r;
+					if (nr != rlay)
+						TAILQ_INSERT_TAIL(&relays, nr,
+						    rl_entry);
+				} else {
+					if ((nr = calloc(1, sizeof(*nr))) == NULL)
+						fatal("out of memory");
+					TAILQ_INSERT_TAIL(&relays, nr, rl_entry);
+				}
+				bcopy(&h->ss, &nr->rl_conf.ss,
+				    sizeof(nr->rl_conf.ss));
+				nr->rl_conf.port = h->port.val[0];
+				if ($5)
+					nr->rl_conf.flags |= F_TLS;
+				cnt++;
 			}
-			tableport = h->port.val[0];
+			if ($5)
+				conf->sc_conf.flags |= F_TLS;
+			tableport = $4.val[0];
 			host_free(&al);
 		}
 		| forwardmode opttlsclient TO forwardspec dstaf optproxyproto {
@@ -3304,6 +3405,64 @@ host(const char *s, struct addresslist *al, int max,
 	return (1);
 }
 
+int
+host_ifaddr(struct sockaddr_storage *ss, struct ifaddrs *ifap)
+{
+	struct ifaddrs		*p;
+	struct sockaddr_in	*sin;
+	struct sockaddr_in6	*sin6;
+
+	switch (ss->ss_family) {
+	case AF_INET:
+		sin = (struct sockaddr_in *)ss;
+		if (sin->sin_addr.s_addr == INADDR_ANY)
+			return (1);
+		break;
+	case AF_INET6:
+		sin6 = (struct sockaddr_in6 *)ss;
+		if (IN6_IS_ADDR_UNSPECIFIED(&sin6->sin6_addr))
+			return (1);
+		break;
+	default:
+		return (0);
+	}
+
+	for (p = ifap; p != NULL; p = p->ifa_next) {
+		if (p->ifa_addr == NULL ||
+		    p->ifa_addr->sa_family != ss->ss_family ||
+		    sockaddr_cmp((struct sockaddr *)ss, p->ifa_addr, -1) != 0)
+			continue;
+		bzero(ss, sizeof(*ss));
+		memcpy(ss, p->ifa_addr, p->ifa_addr->sa_len);
+		return (1);
+	}
+
+	return (0);
+}
+
+int
+host_local(struct addresslist *al)
+{
+	struct ifaddrs		*ifap;
+	struct address		*h, *next;
+	int			 cnt = 0;
+
+	if (getifaddrs(&ifap) == -1)
+		fatal("getifaddrs");
+
+	TAILQ_FOREACH_SAFE(h, al, entry, next) {
+		if (host_ifaddr(&h->ss, ifap)) {
+			cnt++;
+			continue;
+		}
+		TAILQ_REMOVE(al, h, entry);
+		free(h);
+	}
+
+	freeifaddrs(ifap);
+	return (cnt);
+}
+
 void
 host_free(struct addresslist *al)
 {
@@ -3452,7 +3611,7 @@ relay_inherit(struct relay *ra, struct relay *rb)
 		goto err;
 	}
 	TAILQ_FOREACH(name, &rb->rl_proto->tlscerts, entry) {
-		if (relay_load_certfiles(conf, rb, name->name) == -1) {
+		if (relay_load_certfiles(conf, rb, name) == -1) {
 			yyerror("cannot load keypair %s for relay %s",
 			    name->name, rb->rl_conf.name);
 			goto err;
@@ -3550,4 +3709,32 @@ is_if_in_group(const char *ifname, const char *groupname)
 end:
 	close(s);
 	return (ret);
+}
+
+struct keyname*
+proto_keyname(char *name)
+{
+	struct keyname	*kname = NULL, *key;
+
+	if (strlen(name) >= PATH_MAX) {
+		yyerror("keypair name too long");
+		return NULL;
+	}
+
+
+	TAILQ_FOREACH(key, &proto->tlscerts, entry) {
+	   if (strcmp(key->name, name) == 0)
+			return key;
+	}
+
+	if ((kname = calloc(1, sizeof(*kname))) == NULL) {
+		return NULL;
+	}
+
+	if ((kname->name = strdup(name)) == NULL) {
+		free(kname);
+		return NULL;
+	}
+	TAILQ_INSERT_TAIL(&proto->tlscerts, kname, entry);
+	return kname;
 }

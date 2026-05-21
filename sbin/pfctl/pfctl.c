@@ -1,4 +1,4 @@
-/*	$OpenBSD: pfctl.c,v 1.402 2026/04/09 06:10:38 dlg Exp $ */
+/*	$OpenBSD: pfctl.c,v 1.404 2026/05/17 14:11:57 sashan Exp $ */
 
 /*
  * Copyright (c) 2001 Daniel Hartmeier
@@ -1231,7 +1231,7 @@ pfctl_show_rules(struct pfctl *pf, char *path, enum pfctl_show format,
 	struct pfioc_rule pr;
 	u_int32_t header = 0;
 	int len = strlen(path), ret = 0;
-	char *npath, *p;
+	char *npath = NULL, *p;
 
 	if (depth > PF_ANCHOR_STACK_MAX) {
 		warnx("%s: max stack depth exceeded for %s", __func__, path);
@@ -1769,6 +1769,8 @@ pfctl_load_queues(struct pfctl *pf)
 
 	if ((pf->opts & PF_OPT_NOACTION) == 0)
 		ticket = pfctl_get_ticket(pf->trans, PF_TRANS_RULESET, "");
+	else
+		ticket = 0;
 
 	TAILQ_FOREACH_SAFE(qi, &rootqs, entries, tempqi) {
 		TAILQ_REMOVE(&rootqs, qi, entries);

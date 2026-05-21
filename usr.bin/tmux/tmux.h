@@ -1,4 +1,4 @@
-/* $OpenBSD: tmux.h,v 1.1312 2026/05/08 06:57:38 nicm Exp $ */
+/* $OpenBSD: tmux.h,v 1.1321 2026/05/20 10:56:46 nicm Exp $ */
 
 /*
  * Copyright (c) 2007 Nicholas Marriott <nicholas.marriott@gmail.com>
@@ -1081,8 +1081,8 @@ struct screen_redraw_ctx {
 
 	u_int		 sx;
 	u_int		 sy;
-	u_int		 ox;
-	u_int		 oy;
+	int		 ox;
+	int		 oy;
 };
 
 /* Screen size. */
@@ -1197,6 +1197,19 @@ enum client_theme {
 	THEME_DARK
 };
 
+/* Visible range array element. */
+struct visible_range {
+	u_int	px;	/* start */
+	u_int	nx;	/* length */
+};
+
+/* Visible areas not obstructed. */
+struct visible_ranges {
+	struct visible_range	*ranges;  /* dynamically allocated array */
+	u_int			 used;    /* number of entries in ranges */
+	u_int			 size;    /* allocated capacity of ranges */
+};
+
 /* Child window structure. */
 struct window_pane {
 	u_int		 id;
@@ -1211,8 +1224,8 @@ struct window_pane {
 	u_int		 sx;
 	u_int		 sy;
 
-	u_int		 xoff;
-	u_int		 yoff;
+	int		 xoff;
+	int		 yoff;
 
 	int		 flags;
 #define PANE_REDRAW 0x1
@@ -1287,11 +1300,15 @@ struct window_pane {
 
 	struct style	 scrollbar_style;
 
+	struct visible_ranges r;
+
 	TAILQ_ENTRY(window_pane) entry;  /* link in list of all panes */
 	TAILQ_ENTRY(window_pane) sentry; /* link in list of last visited */
+        TAILQ_ENTRY(window_pane) zentry; /* z-index link in list of all panes */
 	RB_ENTRY(window_pane) tree_entry;
 };
 TAILQ_HEAD(window_panes, window_pane);
+TAILQ_HEAD(window_panes_zindex, window_pane);
 RB_HEAD(window_pane_tree, window_pane);
 
 /* Window structure. */
@@ -1311,6 +1328,7 @@ struct window {
 
 	struct window_pane	*active;
 	struct window_panes 	 last_panes;
+	struct window_panes      z_index;
 	struct window_panes	 panes;
 
 	int			 lastlayout;
@@ -1329,6 +1347,9 @@ struct window {
 	u_int			 new_sy;
 	u_int			 new_xpixel;
 	u_int			 new_ypixel;
+
+	u_int			 last_new_pane_x;
+	u_int			 last_new_pane_y;
 
 	struct utf8_data	*fill_character;
 	int			 flags;
@@ -1404,6 +1425,7 @@ TAILQ_HEAD(winlink_stack, winlink);
 enum layout_type {
 	LAYOUT_LEFTRIGHT,
 	LAYOUT_TOPBOTTOM,
+	LAYOUT_FLOATING,
 	LAYOUT_WINDOWPANE
 };
 
@@ -1419,8 +1441,8 @@ struct layout_cell {
 	u_int		 sx;
 	u_int		 sy;
 
-	u_int		 xoff;
-	u_int		 yoff;
+	int		 xoff;
+	int		 yoff;
 
 	struct window_pane *wp;
 	struct layout_cells cells;
@@ -1555,19 +1577,6 @@ struct key_event {
 	size_t			 len;
 };
 
-/* Visible range array element. */
-struct visible_range {
-	u_int	px;	/* start */
-	u_int	nx;	/* length */
-};
-
-/* Visible areas not obstructed. */
-struct visible_ranges {
-	struct visible_range	*ranges;  /* dynamically allocated array */
-	u_int			 used;    /* number of entries in ranges */
-	u_int			 size;    /* allocated capacity of ranges */
-};
-
 /* Terminal definition. */
 struct tty_term {
 	char		*name;
@@ -1652,6 +1661,7 @@ struct tty {
 #define TTY_WINSIZEQUERY 0x1000
 #define TTY_WAITFG 0x2000
 #define TTY_WAITBG 0x4000
+#define TTY_BRACKETPASTE 0x8000
 #define TTY_ALL_REQUEST_FLAGS \
 	(TTY_HAVEDA|TTY_HAVEDA2|TTY_HAVEXDA)
 	int		 flags;
@@ -1710,10 +1720,10 @@ struct tty_ctx {
 	u_int			 orlower;
 
 	/* Target region (usually pane) offset and size. */
-	u_int			 xoff;
-	u_int			 yoff;
-	u_int			 rxoff;
-	u_int			 ryoff;
+	int			 xoff;
+	int			 yoff;
+	int			 rxoff;
+	int			 ryoff;
 	u_int			 sx;
 	u_int			 sy;
 
@@ -1945,6 +1955,9 @@ struct client_window {
 };
 RB_HEAD(client_windows, client_window);
 
+/* Maximum time to be pasting. */
+#define CLIENT_PASTE_TIME_LIMIT 5
+
 /* Client connection. */
 typedef int (*prompt_input_cb)(struct client *, void *, const char *, int);
 typedef void (*prompt_free_cb)(void *);
@@ -2084,6 +2097,7 @@ struct client {
 
 	struct key_table	*keytable;
 	key_code		 last_key;
+	time_t			 paste_time;
 
 	uint64_t		 redraw_panes;
 	uint64_t		 redraw_scrollbars;
@@ -2280,6 +2294,7 @@ struct spawn_context {
 #define SPAWN_FULLSIZE 0x20
 #define SPAWN_EMPTY 0x40
 #define SPAWN_ZOOM 0x80
+#define SPAWN_FLOATING 0x100
 };
 
 /* Paste buffer. */
@@ -3159,7 +3174,7 @@ void	 grid_reader_start(struct grid_reader *, struct grid *, u_int, u_int);
 void	 grid_reader_get_cursor(struct grid_reader *, u_int *, u_int *);
 u_int	 grid_reader_line_length(struct grid_reader *);
 int	 grid_reader_in_set(struct grid_reader *, const char *);
-void	 grid_reader_cursor_right(struct grid_reader *, int, int);
+void	 grid_reader_cursor_right(struct grid_reader *, int, int, int);
 void	 grid_reader_cursor_left(struct grid_reader *, int);
 void	 grid_reader_cursor_down(struct grid_reader *);
 void	 grid_reader_cursor_up(struct grid_reader *);
@@ -3275,6 +3290,9 @@ void	 screen_write_alternateoff(struct screen_write_ctx *,
 /* screen-redraw.c */
 void	 screen_redraw_screen(struct client *);
 void	 screen_redraw_pane(struct client *, struct window_pane *, int);
+int	 screen_redraw_is_visible(struct visible_ranges *, u_int);
+struct visible_ranges *screen_redraw_get_visible_ranges(struct window_pane *,
+	     u_int, u_int, u_int, struct visible_ranges *);
 
 /* screen.c */
 void	 screen_init(struct screen *, u_int, u_int, u_int);
@@ -3358,7 +3376,7 @@ struct window_pane *window_pane_next_by_number(struct window *,
 struct window_pane *window_pane_previous_by_number(struct window *,
 			struct window_pane *, u_int);
 int		 window_pane_index(struct window_pane *, u_int *);
-u_int		 window_count_panes(struct window *);
+u_int		 window_count_panes(struct window *, int);
 void		 window_destroy_panes(struct window *);
 struct window_pane *window_pane_find_by_id_str(const char *);
 struct window_pane *window_pane_find_by_id(u_int);
@@ -3412,6 +3430,12 @@ enum client_theme window_pane_get_theme(struct window_pane *);
 void		 window_pane_send_theme_update(struct window_pane *);
 struct style_range *window_pane_border_status_get_range(struct window_pane *,
 			u_int, u_int);
+int              window_pane_tiled_geometry(struct window *,
+		     struct window_pane *, int *, int *, enum layout_type *,
+		     struct cmdq_item *, struct args *, char **);
+int              window_pane_floating_geometry(struct window *,
+		     struct window_pane *, u_int *, u_int *, u_int *, u_int *,
+		     struct cmdq_item *, struct args *, char **);
 
 /* layout.c */
 u_int		 layout_count_cells(struct layout_cell *);
@@ -3423,10 +3447,10 @@ void		 layout_destroy_cell(struct window *, struct layout_cell *,
 void		 layout_resize_layout(struct window *, struct layout_cell *,
 		     enum layout_type, int, int);
 struct layout_cell *layout_search_by_border(struct layout_cell *, u_int, u_int);
-void		 layout_set_size(struct layout_cell *, u_int, u_int, u_int,
-		     u_int);
+void             layout_set_size(struct layout_cell *, u_int, u_int, int, int);
 void		 layout_make_leaf(struct layout_cell *, struct window_pane *);
 void		 layout_make_node(struct layout_cell *, enum layout_type);
+void		 layout_fix_zindexes(struct window *, struct layout_cell *);
 void		 layout_fix_offsets(struct window *);
 void		 layout_fix_panes(struct window *, struct window_pane *);
 void		 layout_resize_adjust(struct window *, struct layout_cell *,

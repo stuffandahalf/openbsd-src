@@ -2,7 +2,7 @@
  * THIS FILE AUTOMATICALLY GENERATED.  DO NOT EDIT.
  *
  * generated from:
- *	OpenBSD: pcidevs,v 1.2133 2026/04/06 23:59:43 jsg Exp 
+ *	OpenBSD: pcidevs,v 1.2139 2026/05/20 04:22:12 jsg Exp 
  */
 
 /*	$NetBSD: pcidevs,v 1.30 1997/06/24 06:20:24 thorpej Exp $	*/
@@ -1060,6 +1060,30 @@ static const struct pci_known_product pci_known_products[] = {
 	    "0Fh Misc Cfg",
 	},
 	{
+	    PCI_VENDOR_AMD, PCI_PRODUCT_AMD_1A_6X_PCIE_1,
+	    "1Ah/6xh PCIE",
+	},
+	{
+	    PCI_VENDOR_AMD, PCI_PRODUCT_AMD_1A_6X_PCIE_2,
+	    "1Ah/6xh PCIE",
+	},
+	{
+	    PCI_VENDOR_AMD, PCI_PRODUCT_AMD_1A_6X_PCIE_3,
+	    "1Ah/6xh PCIE",
+	},
+	{
+	    PCI_VENDOR_AMD, PCI_PRODUCT_AMD_1A_6X_XHCI_1,
+	    "1Ah/6xh xHCI",
+	},
+	{
+	    PCI_VENDOR_AMD, PCI_PRODUCT_AMD_1A_6X_XHCI_2,
+	    "1Ah/6xh xHCI",
+	},
+	{
+	    PCI_VENDOR_AMD, PCI_PRODUCT_AMD_1A_6X_XHCI_3,
+	    "1Ah/6xh xHCI",
+	},
+	{
 	    PCI_VENDOR_AMD, PCI_PRODUCT_AMD_1A_6X_USB4_1,
 	    "1Ah/6xh USB4",
 	},
@@ -1070,6 +1094,26 @@ static const struct pci_known_product pci_known_products[] = {
 	{
 	    PCI_VENDOR_AMD, PCI_PRODUCT_AMD_1A_6X_RC,
 	    "1Ah/6xh Root Complex",
+	},
+	{
+	    PCI_VENDOR_AMD, PCI_PRODUCT_AMD_1A_6X_IOMMU,
+	    "1Ah/6xh IOMMU",
+	},
+	{
+	    PCI_VENDOR_AMD, PCI_PRODUCT_AMD_1A_6X_HB,
+	    "1Ah/6xh Host",
+	},
+	{
+	    PCI_VENDOR_AMD, PCI_PRODUCT_AMD_1A_6X_PCIE_4,
+	    "1Ah/6xh PCIE",
+	},
+	{
+	    PCI_VENDOR_AMD, PCI_PRODUCT_AMD_1A_6X_PCIE_5,
+	    "1Ah/6xh PCIE",
+	},
+	{
+	    PCI_VENDOR_AMD, PCI_PRODUCT_AMD_1A_6X_XHCI_4,
+	    "1Ah/6xh xHCI",
 	},
 	{
 	    PCI_VENDOR_AMD, PCI_PRODUCT_AMD_10_HT,
@@ -1090,6 +1134,38 @@ static const struct pci_known_product pci_known_products[] = {
 	{
 	    PCI_VENDOR_AMD, PCI_PRODUCT_AMD_10_LINK,
 	    "10h Link Cfg",
+	},
+	{
+	    PCI_VENDOR_AMD, PCI_PRODUCT_AMD_1A_6X_DF_1,
+	    "1Ah/6xh Data Fabric",
+	},
+	{
+	    PCI_VENDOR_AMD, PCI_PRODUCT_AMD_1A_6X_DF_2,
+	    "1Ah/6xh Data Fabric",
+	},
+	{
+	    PCI_VENDOR_AMD, PCI_PRODUCT_AMD_1A_6X_DF_3,
+	    "1Ah/6xh Data Fabric",
+	},
+	{
+	    PCI_VENDOR_AMD, PCI_PRODUCT_AMD_1A_6X_DF_4,
+	    "1Ah/6xh Data Fabric",
+	},
+	{
+	    PCI_VENDOR_AMD, PCI_PRODUCT_AMD_1A_6X_DF_5,
+	    "1Ah/6xh Data Fabric",
+	},
+	{
+	    PCI_VENDOR_AMD, PCI_PRODUCT_AMD_1A_6X_DF_6,
+	    "1Ah/6xh Data Fabric",
+	},
+	{
+	    PCI_VENDOR_AMD, PCI_PRODUCT_AMD_1A_6X_DF_7,
+	    "1Ah/6xh Data Fabric",
+	},
+	{
+	    PCI_VENDOR_AMD, PCI_PRODUCT_AMD_1A_6X_DF_8,
+	    "1Ah/6xh Data Fabric",
 	},
 	{
 	    PCI_VENDOR_AMD, PCI_PRODUCT_AMD_19_78_DF_1,
@@ -2192,6 +2268,14 @@ static const struct pci_known_product pci_known_products[] = {
 	    "14h Reserved",
 	},
 	{
+	    PCI_VENDOR_AMD, PCI_PRODUCT_AMD_1A_6X_PSP,
+	    "1Ah/6xh PSP",
+	},
+	{
+	    PCI_VENDOR_AMD, PCI_PRODUCT_AMD_1A_6X_NPU,
+	    "1Ah/6xh NPU",
+	},
+	{
 	    PCI_VENDOR_AMD, PCI_PRODUCT_AMD_A1100_HB_1,
 	    "A1100 Host",
 	},
@@ -3045,6 +3129,10 @@ static const struct pci_known_product pci_known_products[] = {
 	},
 	{
 	    PCI_VENDOR_APPLE, PCI_PRODUCT_APPLE_NVME2,
+	    "NVMe",
+	},
+	{
+	    PCI_VENDOR_APPLE, PCI_PRODUCT_APPLE_NVME3,
 	    "NVMe",
 	},
 	{
@@ -6957,6 +7045,10 @@ static const struct pci_known_product pci_known_products[] = {
 	},
 	{
 	    PCI_VENDOR_ATI, PCI_PRODUCT_ATI_NAVI33_1,
+	    "Navi 33",
+	},
+	{
+	    PCI_VENDOR_ATI, PCI_PRODUCT_ATI_NAVI33_5,
 	    "Navi 33",
 	},
 	{
@@ -21956,6 +22048,26 @@ static const struct pci_known_product pci_known_products[] = {
 	    "I219-V",
 	},
 	{
+	    PCI_VENDOR_INTEL, PCI_PRODUCT_INTEL_E610_VF,
+	    "E610-VF",
+	},
+	{
+	    PCI_VENDOR_INTEL, PCI_PRODUCT_INTEL_E610_SFP,
+	    "E610-SFP",
+	},
+	{
+	    PCI_VENDOR_INTEL, PCI_PRODUCT_INTEL_E610_10G,
+	    "E610-10G",
+	},
+	{
+	    PCI_VENDOR_INTEL, PCI_PRODUCT_INTEL_E610_2_5G,
+	    "E610-2.5G",
+	},
+	{
+	    PCI_VENDOR_INTEL, PCI_PRODUCT_INTEL_E610_SGMII,
+	    "E610-SGMII",
+	},
+	{
 	    PCI_VENDOR_INTEL, PCI_PRODUCT_INTEL_I219_LM25,
 	    "I219-LM",
 	},
@@ -29044,6 +29156,10 @@ static const struct pci_known_product pci_known_products[] = {
 	    "MT7921",
 	},
 	{
+	    PCI_VENDOR_MEDIATEK, PCI_PRODUCT_MEDIATEK_MT7920,
+	    "MT7920",
+	},
+	{
 	    PCI_VENDOR_MEDIATEK, PCI_PRODUCT_MEDIATEK_MT7925,
 	    "MT7925",
 	},
@@ -33718,6 +33834,10 @@ static const struct pci_known_product pci_known_products[] = {
 	{
 	    PCI_VENDOR_ROCKCHIP, PCI_PRODUCT_ROCKCHIP_RK3566,
 	    "RK3566",
+	},
+	{
+	    PCI_VENDOR_ROCKCHIP, PCI_PRODUCT_ROCKCHIP_RK3576,
+	    "RK3576",
 	},
 	{
 	    PCI_VENDOR_ROCKCHIP, PCI_PRODUCT_ROCKCHIP_RK3588,

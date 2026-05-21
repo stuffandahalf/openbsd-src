@@ -1,4 +1,4 @@
-/* $OpenBSD: server-client.c,v 1.454 2026/04/23 12:36:15 nicm Exp $ */
+/* $OpenBSD: server-client.c,v 1.458 2026/05/17 13:01:04 nicm Exp $ */
 
 /*
  * Copyright (c) 2009 Nicholas Marriott <nicholas.marriott@gmail.com>
@@ -636,7 +636,7 @@ server_client_check_mouse_in_pane(struct window_pane *wp, u_int px, u_int py,
 	if (((pane_status != PANE_STATUS_OFF &&
 	    (int)py != pane_status_line && py != wp->yoff + wp->sy) ||
 	    (wp->yoff == 0 && py < wp->sy) ||
-	    (py >= wp->yoff && py < wp->yoff + wp->sy)) &&
+	    ((int)py >= wp->yoff && py < wp->yoff + wp->sy)) &&
 	    ((sb_pos == PANE_SCROLLBARS_RIGHT &&
 	    (int)px < (int)wp->xoff + (int)wp->sx + sb_pad + sb_w) ||
 	    (sb_pos == PANE_SCROLLBARS_LEFT &&
@@ -1037,6 +1037,7 @@ server_client_is_bracket_paste(struct client *c, key_code key)
 {
 	if ((key & KEYC_MASK_KEY) == KEYC_PASTE_START) {
 		c->flags |= CLIENT_BRACKETPASTING;
+		c->paste_time = current_time;
 		log_debug("%s: bracket paste on", c->name);
 		return (0);
 	}
@@ -1062,12 +1063,15 @@ server_client_is_assume_paste(struct client *c)
 		return (0);
 	if ((t = options_get_number(s->options, "assume-paste-time")) == 0)
 		return (0);
+	if (tty_term_has(c->tty.term, TTYC_ENBP))
+		return (0);
 
 	timersub(&c->activity_time, &c->last_activity_time, &tv);
 	if (tv.tv_sec == 0 && tv.tv_usec < t * 1000) {
 		if (c->flags & CLIENT_ASSUMEPASTING)
 			return (1);
 		c->flags |= CLIENT_ASSUMEPASTING;
+		c->paste_time = current_time;
 		log_debug("%s: assume paste on", c->name);
 		return (0);
 	}
@@ -2135,7 +2139,7 @@ server_client_set_progress_bar(struct client *c)
 	struct session		*s = c->session;
 	struct progress_bar	*pane_pb;
 
-	if (s->curw == NULL)
+	if (s->curw == NULL || s->curw->window->active == NULL)
 		return;
 	pane_pb = &s->curw->window->active->base.progress_bar;
 	if (pane_pb->state == c->progress_bar.state &&
@@ -2500,6 +2504,13 @@ server_client_dispatch_identify(struct client *c, struct imsg *imsg)
 		if (c->out_fd != -1)
 			close(c->out_fd);
 		c->out_fd = -1;
+	}
+
+	/* If pasting has taken too long, turn it off. */
+	if (c->flags & (CLIENT_BRACKETPASTING|CLIENT_ASSUMEPASTING) &&
+	    current_time - c->paste_time > CLIENT_PASTE_TIME_LIMIT) {
+		log_debug("%s: paste time limit exceeded", c->name);
+		c->flags &= ~(CLIENT_BRACKETPASTING|CLIENT_ASSUMEPASTING);
 	}
 
 	/*

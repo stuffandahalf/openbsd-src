@@ -1,4 +1,4 @@
-/*	$OpenBSD: dev.c,v 1.132 2026/03/15 14:24:43 ratchov Exp $	*/
+/*	$OpenBSD: dev.c,v 1.134 2026/05/20 15:43:07 ratchov Exp $	*/
 /*
  * Copyright (c) 2008-2012 Alexandre Ratchov <alex@caoua.org>
  *
@@ -42,7 +42,6 @@ void dev_sub_bcopy(struct dev *, struct slot *);
 void dev_onmove(struct dev *, int);
 void dev_master(struct dev *, unsigned int);
 void dev_cycle(struct dev *);
-void dev_adjpar(struct dev *, int, int, int);
 int dev_allocbufs(struct dev *);
 void dev_freebufs(struct dev *);
 int dev_ref(struct dev *);
@@ -747,8 +746,7 @@ dev_master(struct dev *d, unsigned int master)
  * Create a sndio device
  */
 struct dev *
-dev_new(char *path, struct aparams *par,
-    unsigned int mode, unsigned int bufsz, unsigned int round,
+dev_new(char *path, struct aparams *par, unsigned int bufsz, unsigned int round,
     unsigned int rate, unsigned int hold, unsigned int autovol)
 {
 	struct dev *d, **pd;
@@ -762,7 +760,6 @@ dev_new(char *path, struct aparams *par,
 	d->num = dev_sndnum++;
 
 	d->reqpar = *par;
-	d->reqmode = mode;
 	d->reqpchan = d->reqrchan = 0;
 	d->reqbufsz = bufsz;
 	d->reqround = round;
@@ -786,18 +783,12 @@ dev_new(char *path, struct aparams *par,
  * adjust device parameters and mode
  */
 void
-dev_adjpar(struct dev *d, int mode,
-    int pmax, int rmax)
+dev_adjpar(struct dev *d, int pmax, int rmax)
 {
-	d->reqmode |= mode & MODE_AUDIOMASK;
-	if (mode & MODE_PLAY) {
-		if (d->reqpchan < pmax + 1)
-			d->reqpchan = pmax + 1;
-	}
-	if (mode & MODE_REC) {
-		if (d->reqrchan < rmax + 1)
-			d->reqrchan = rmax + 1;
-	}
+	if (d->reqpchan < pmax + 1)
+		d->reqpchan = pmax + 1;
+	if (d->reqrchan < rmax + 1)
+		d->reqrchan = rmax + 1;
 }
 
 /*
@@ -867,7 +858,7 @@ dev_allocbufs(struct dev *d)
 int
 dev_open(struct dev *d)
 {
-	d->mode = d->reqmode;
+	d->mode = MODE_AUDIOMASK;
 	d->round = d->reqround;
 	d->bufsz = d->reqbufsz;
 	d->rate = d->reqrate;
@@ -996,12 +987,6 @@ dev_unref(struct dev *d)
 int
 dev_init(struct dev *d)
 {
-	if ((d->reqmode & MODE_AUDIOMASK) == 0) {
-#ifdef DEBUG
-		logx(1, "%s: has no streams", d->path);
-#endif
-		return 0;
-	}
 	if (d->hold && !dev_ref(d))
 		return 0;
 	return 1;
@@ -1473,12 +1458,6 @@ slot_attach(struct slot *s)
 	struct dev *d = s->opt->dev;
 	long long pos;
 
-	if (((s->mode & MODE_PLAY) && !(s->opt->mode & MODE_PLAY)) ||
-	    ((s->mode & MODE_RECMASK) && !(s->opt->mode & MODE_RECMASK))) {
-		logx(1, "slot%zu at %s: mode not allowed", s - slot_array, s->opt->name);
-		return;
-	}
-
 	/*
 	 * setup conversions layer
 	 */
@@ -1763,7 +1742,7 @@ ctlslot_new(struct opt *o, struct ctlops *ops, void *arg)
 	}
 	s->opt = o;
 	s->self = 1 << i;
-	if (!opt_ref(o))
+	if (s->opt != NULL && !opt_ref(s->opt))
 		return NULL;
 	s->ops = ops;
 	s->arg = arg;
@@ -1793,14 +1772,13 @@ ctlslot_del(struct ctlslot *s)
 			pc = &c->next;
 	}
 	s->ops = NULL;
-	opt_unref(s->opt);
+	if (s->opt != NULL)
+		opt_unref(s->opt);
 }
 
 int
 ctlslot_visible(struct ctlslot *s, struct ctl *c)
 {
-	if (s->opt == NULL)
-		return 1;
 	switch (c->scope) {
 	case CTL_HW:
 		/*
@@ -1812,11 +1790,12 @@ ctlslot_visible(struct ctlslot *s, struct ctl *c)
 			return 0;
 		/* FALLTHROUGH */
 	case CTL_DEV_MASTER:
-		return (s->opt->dev == c->u.any.arg0);
+		return (s->opt != NULL && s->opt->dev == c->u.any.arg0);
 	case CTL_OPT_DEV:
-		return (s->opt == c->u.any.arg0);
+	case CTL_OPT_MODE:
+		return (s->opt != NULL && s->opt == c->u.any.arg0);
 	case CTL_APP_LEVEL:
-		return (s->opt == c->u.app_level.opt);
+		return (s->opt != NULL && s->opt == c->u.app_level.opt);
 	default:
 		return 0;
 	}
@@ -1894,6 +1873,9 @@ ctl_scope_fmt(char *buf, size_t size, struct ctl *c)
 	case CTL_OPT_DEV:
 		return snprintf(buf, size, "opt_dev:%s/%s",
 		    c->u.opt_dev.opt->name, c->u.opt_dev.dev->name);
+	case CTL_OPT_MODE:
+		return snprintf(buf, size, "opt_mode:%s/%s",
+		    c->u.opt_mode.opt->name, opt_modes[c->u.opt_mode.idx].name);
 	default:
 		return snprintf(buf, size, "unknown");
 	}
@@ -1962,6 +1944,11 @@ ctl_setval(struct ctl *c, int val)
 			opt_setalt(c->u.opt_dev.opt, c->u.opt_dev.dev);
 		}
 		return 1;
+	case CTL_OPT_MODE:
+		opt_setmode(c->u.opt_mode.opt, c->u.opt_mode.idx, val);
+		c->val_mask = ~0U;
+		c->curval = val;
+		return 1;
 	default:
 		logx(2, "ctl%u: not writable", c->addr);
 		return 1;
@@ -2017,6 +2004,9 @@ ctl_new(int scope, void *arg0, void *arg1,
 	case CTL_OPT_DEV:
 	case CTL_APP_LEVEL:
 		c->u.any.arg1 = arg1;
+		break;
+	case CTL_OPT_MODE:
+		c->u.opt_mode.idx = *(int *)arg1;
 		break;
 	default:
 		c->u.any.arg1 = NULL;
@@ -2083,6 +2073,10 @@ ctl_match(struct ctl *c, int scope, void *arg0, void *arg1)
 	case CTL_OPT_DEV:
 	case CTL_APP_LEVEL:
 		if (arg1 != NULL && c->u.any.arg1 != arg1)
+			return 0;
+		break;
+	case CTL_OPT_MODE:
+		if (arg1 != NULL && c->u.opt_mode.idx != *(int *)arg1)
 			return 0;
 		break;
 	}
@@ -2215,7 +2209,7 @@ dev_ctlsync(struct dev *d)
 	for (s = ctlslot_array, i = 0; i < DEV_NCTLSLOT; i++, s++) {
 		if (s->ops == NULL)
 			continue;
-		if (s->opt->dev == d)
+		if (s->opt != NULL && s->opt->dev == d)
 			s->ops->sync(s->arg);
 	}
 }

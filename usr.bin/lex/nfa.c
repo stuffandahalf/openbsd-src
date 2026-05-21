@@ -1,4 +1,4 @@
-/*	$OpenBSD: nfa.c,v 1.12 2024/11/09 18:03:44 op Exp $	*/
+/*	$OpenBSD: nfa.c,v 1.14 2026/05/17 15:32:55 renaud Exp $	*/
 
 /* nfa - NFA construction routines */
 

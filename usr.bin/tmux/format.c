@@ -1,4 +1,4 @@
-/* $OpenBSD: format.c,v 1.364 2026/05/06 13:43:38 nicm Exp $ */
+/* $OpenBSD: format.c,v 1.367 2026/05/19 12:16:25 nicm Exp $ */
 
 /*
  * Copyright (c) 2011 Nicholas Marriott <nicholas.marriott@gmail.com>
@@ -1170,9 +1170,9 @@ format_cb_pane_at_bottom(struct format_tree *ft)
 
 	status = options_get_number(w->options, "pane-border-status");
 	if (status == PANE_STATUS_BOTTOM)
-		flag = (wp->yoff + wp->sy == w->sy - 1);
+		flag = (wp->yoff + (int)wp->sy == (int)w->sy - 1);
 	else
-		flag = (wp->yoff + wp->sy == w->sy);
+		flag = (wp->yoff + (int)wp->sy == (int)w->sy);
 	xasprintf(&value, "%d", flag);
 	return (value);
 }
@@ -2034,7 +2034,7 @@ static void *
 format_cb_pane_at_right(struct format_tree *ft)
 {
 	if (ft->wp != NULL) {
-		if (ft->wp->xoff + ft->wp->sx == ft->wp->window->sx)
+		if (ft->wp->xoff + (int)ft->wp->sx == (int)ft->wp->window->sx)
 			return (xstrdup("1"));
 		return (xstrdup("0"));
 	}
@@ -2045,8 +2045,10 @@ format_cb_pane_at_right(struct format_tree *ft)
 static void *
 format_cb_pane_bottom(struct format_tree *ft)
 {
-	if (ft->wp != NULL)
-		return (format_printf("%u", ft->wp->yoff + ft->wp->sy - 1));
+	struct window_pane	*wp = ft->wp;
+
+	if (wp != NULL)
+		return (format_printf("%d", wp->yoff + (int)wp->sy - 1));
 	return (NULL);
 }
 
@@ -2205,7 +2207,7 @@ static void *
 format_cb_pane_left(struct format_tree *ft)
 {
 	if (ft->wp != NULL)
-		return (format_printf("%u", ft->wp->xoff));
+		return (format_printf("%d", ft->wp->xoff));
 	return (NULL);
 }
 
@@ -2328,8 +2330,10 @@ format_cb_pane_pb_state(struct format_tree *ft)
 static void *
 format_cb_pane_right(struct format_tree *ft)
 {
-	if (ft->wp != NULL)
-		return (format_printf("%u", ft->wp->xoff + ft->wp->sx - 1));
+	struct window_pane	*wp = ft->wp;
+
+	if (wp != NULL)
+		return (format_printf("%d", wp->xoff + (int)wp->sx - 1));
 	return (NULL);
 }
 
@@ -2371,7 +2375,7 @@ static void *
 format_cb_pane_top(struct format_tree *ft)
 {
 	if (ft->wp != NULL)
-		return (format_printf("%u", ft->wp->yoff));
+		return (format_printf("%d", ft->wp->yoff));
 	return (NULL);
 }
 
@@ -2918,7 +2922,7 @@ static void *
 format_cb_window_panes(struct format_tree *ft)
 {
 	if (ft->w != NULL)
-		return (format_printf("%u", window_count_panes(ft->w)));
+		return (format_printf("%u", window_count_panes(ft->w, 1)));
 	return (NULL);
 }
 
@@ -4195,7 +4199,6 @@ format_strip(struct format_expand_state *es, const char *s)
 	*cp = '\0';
 	return (out);
 }
-
 
 /* Skip until end. */
 static const char *

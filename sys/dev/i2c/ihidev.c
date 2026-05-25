@@ -1,4 +1,4 @@
-/* $OpenBSD: ihidev.c,v 1.41 2025/10/28 15:36:46 jcs Exp $ */
+/* $OpenBSD: ihidev.c,v 1.43 2026/05/23 11:10:57 mglocker Exp $ */
 /*
  * HID-over-i2c driver
  *
@@ -300,7 +300,7 @@ ihidev_sleep(struct ihidev_softc *sc, int ms)
 	if (cold)
 		delay(ms * 1000);
 	else
-		tsleep_nsec(&sc, PWAIT, "ihidev", MSEC_TO_NSEC(ms));
+		tsleep_nsec(&nowake, PWAIT, "ihidev", MSEC_TO_NSEC(ms));
 }
 
 int

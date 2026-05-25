@@ -1,4 +1,4 @@
-/* $OpenBSD: layout.c,v 1.56 2026/05/19 12:16:25 nicm Exp $ */
+/* $OpenBSD: layout.c,v 1.58 2026/05/24 08:40:43 nicm Exp $ */
 
 /*
  * Copyright (c) 2009 Nicholas Marriott <nicholas.marriott@gmail.com>
@@ -77,6 +77,9 @@ void
 layout_free_cell(struct layout_cell *lc)
 {
 	struct layout_cell	*lcchild;
+
+	if (lc == NULL)
+		return;
 
 	switch (lc->type) {
 	case LAYOUT_LEFTRIGHT:
@@ -233,7 +236,7 @@ layout_make_node(struct layout_cell *lc, enum layout_type type)
 	lc->wp = NULL;
 }
 
-/* Fix Z indexes. */
+/* Fix z-indexes. */
 void
 layout_fix_zindexes(struct window *w, struct layout_cell *lc)
 {

@@ -1,4 +1,4 @@
-/*	$OpenBSD: qwz.c,v 1.33 2026/05/19 21:15:21 mglocker Exp $	*/
+/*	$OpenBSD: qwz.c,v 1.35 2026/05/25 08:50:13 kirill Exp $	*/
 
 /*
  * Copyright 2023 Stefan Sperling <stsp@openbsd.org>
@@ -15116,13 +15116,68 @@ void
 qwz_dp_rx_h_undecap_nwifi(struct qwz_softc *sc, struct qwz_rx_msdu *msdu,
     uint8_t *first_hdr, enum hal_encrypt_type enctype)
 {
-	/*
-	* This function will need to do some work once we are receiving
-	* aggregated frames. For now, it needs to do nothing.
-	*/
+	struct rx_mpdu_start_qcn9274 *mpdu;
+	struct ieee80211_frame *wh;
+	struct mbuf *m = msdu->m;
+	uint8_t decap_hdr[IEEE80211_MAX_FRAME_HDR_LEN];
+	size_t hdrlen;
+	uint16_t qos_ctl;
 
-	if (!msdu->is_first_msdu)
-		printf("%s: not implemented\n", __func__);
+	if (m == NULL)
+		return;
+
+	if (m->m_len < sizeof(*wh) &&
+	    (m = m_pullup(m, sizeof(*wh))) == NULL) {
+		msdu->m = NULL;
+		return;
+	}
+	msdu->m = m;
+
+	mpdu = &msdu->rx_desc->u.wcn7850.mpdu_start;
+	wh = mtod(m, struct ieee80211_frame *);
+	if ((le32toh(mpdu->info6) & RX_MPDU_START_INFO6_NON_QOS) ||
+	    ieee80211_has_qos(wh))
+		return;
+
+	hdrlen = ieee80211_get_hdrlen(wh);
+	if (hdrlen > sizeof(decap_hdr))
+		return;
+
+	if (m->m_len < hdrlen &&
+	    (m = m_pullup(m, hdrlen)) == NULL) {
+		msdu->m = NULL;
+		return;
+	}
+	msdu->m = m;
+
+	wh = mtod(m, struct ieee80211_frame *);
+	hdrlen = ieee80211_get_hdrlen(wh);
+	if (hdrlen > sizeof(decap_hdr))
+		return;
+
+	memcpy(decap_hdr, wh, hdrlen);
+	wh = (struct ieee80211_frame *)decap_hdr;
+	wh->i_fc[0] |= IEEE80211_FC0_SUBTYPE_QOS;
+	wh->i_fc[1] &= ~IEEE80211_FC1_ORDER;
+	qos_ctl = htole16(sc->hal_rx_ops->rx_desc_get_mpdu_tid(msdu->rx_desc) &
+	    IEEE80211_QOS_TID);
+
+	m_adj(m, hdrlen);
+
+	M_PREPEND(m, sizeof(qos_ctl), M_DONTWAIT);
+	if (m == NULL) {
+		msdu->m = NULL;
+		return;
+	}
+	memcpy(mtod(m, void *), &qos_ctl, sizeof(qos_ctl));
+
+	M_PREPEND(m, hdrlen, M_DONTWAIT);
+	if (m == NULL) {
+		msdu->m = NULL;
+		return;
+	}
+	msdu->m = m;
+	memcpy(mtod(m, void *), decap_hdr, hdrlen);
 }
 
 void
@@ -23076,6 +23131,50 @@ qwz_dp_tx_get_tid(struct mbuf *m)
 	return ieee80211_get_qos(wh) & IEEE80211_QOS_TID;
 }
 
+int
+qwz_dp_tx_encap_nwifi(struct mbuf **mp)
+{
+	struct mbuf *m = *mp;
+	struct ieee80211_frame *wh;
+	uint8_t *qos_ctl;
+	int hdrlen;
+
+	if (m->m_len < sizeof(*wh) &&
+	    (m = m_pullup(m, sizeof(*wh))) == NULL) {
+		*mp = NULL;
+		return ENOBUFS;
+	}
+
+	wh = mtod(m, struct ieee80211_frame *);
+	if (!ieee80211_has_qos(wh)) {
+		*mp = m;
+		return 0;
+	}
+
+	hdrlen = ieee80211_get_hdrlen(wh);
+	if (m->m_len < hdrlen &&
+	    (m = m_pullup(m, hdrlen)) == NULL) {
+		*mp = NULL;
+		return ENOBUFS;
+	}
+
+	wh = mtod(m, struct ieee80211_frame *);
+	if (ieee80211_has_addr4(wh))
+		qos_ctl = ((struct ieee80211_qosframe_addr4 *)wh)->i_qos;
+	else
+		qos_ctl = ((struct ieee80211_qosframe *)wh)->i_qos;
+
+	memmove(mtod(m, uint8_t *) + sizeof(uint16_t), mtod(m, uint8_t *),
+	    qos_ctl - mtod(m, uint8_t *));
+	m_adj(m, sizeof(uint16_t));
+
+	wh = mtod(m, struct ieee80211_frame *);
+	wh->i_fc[0] &= ~IEEE80211_FC0_SUBTYPE_QOS;
+
+	*mp = m;
+	return 0;
+}
+
 /*
  * Build a WCN7850 / ath12k WiFi7 TCL data descriptor. Encap/encrypt/
  * search settings live in the bank addressed by ti->bank_id; the
@@ -23272,28 +23371,14 @@ qwz_dp_tx(struct qwz_softc *sc, struct qwz_vif *arvif, uint8_t pdev_id,
 	ti.flags1 |= FIELD_PREP(HAL_TCL_DATA_CMD_INFO3_TID_OVERWRITE, 1);
 
 	ti.tid = qwz_dp_tx_get_tid(m);
-#if 0
-	switch (ti.encap_type) {
-	case HAL_TCL_ENCAP_TYPE_NATIVE_WIFI:
-		ath12k_dp_tx_encap_nwifi(skb);
-		break;
-	case HAL_TCL_ENCAP_TYPE_RAW:
-		if (!test_bit(ATH12K_FLAG_RAW_MODE, &ab->dev_flags)) {
-			ret = -EINVAL;
-			goto fail_remove_idr;
+	if (ti.encap_type == HAL_TCL_ENCAP_TYPE_NATIVE_WIFI) {
+		ret = qwz_dp_tx_encap_nwifi(&m);
+		if (ret) {
+			m_freem(m);
+			return ret;
 		}
-		break;
-	case HAL_TCL_ENCAP_TYPE_ETHERNET:
-		/* no need to encap */
-		break;
-	case HAL_TCL_ENCAP_TYPE_802_3:
-	default:
-		/* TODO: Take care of other encap modes as well */
-		ret = -EINVAL;
-		atomic_inc(&ab->soc_stats.tx_err.misc_fail);
-		goto fail_remove_idr;
 	}
-#endif
+
 	ret = bus_dmamap_load_mbuf(sc->sc_dmat, tx_data->map,
 	    m, BUS_DMA_WRITE | BUS_DMA_NOWAIT);
 	if (ret && ret != EFBIG) {
@@ -24564,25 +24649,23 @@ qwz_dmamem_alloc(bus_dma_tag_t dmat, bus_size_t size, bus_size_t align)
 	struct qwz_dmamem *adm;
 	int nsegs;
 
-	adm = malloc(sizeof(*adm), M_DEVBUF, M_NOWAIT | M_ZERO);
-	if (adm == NULL)
-		return NULL;
+	adm = malloc(sizeof(*adm), M_DEVBUF, M_WAITOK | M_ZERO);
 	adm->size = size;
 
 	if (bus_dmamap_create(dmat, size, 1, size, 0,
-	    BUS_DMA_NOWAIT | BUS_DMA_ALLOCNOW, &adm->map) != 0)
+	    BUS_DMA_WAITOK | BUS_DMA_ALLOCNOW, &adm->map) != 0)
 		goto admfree;
 
 	if (bus_dmamem_alloc_range(dmat, size, align, 0, &adm->seg, 1,
-	    &nsegs, BUS_DMA_NOWAIT | BUS_DMA_ZERO, 0, 0xffffffff) != 0)
+	    &nsegs, BUS_DMA_WAITOK | BUS_DMA_ZERO, 0, 0xffffffff) != 0)
 		goto destroy;
 
 	if (bus_dmamem_map(dmat, &adm->seg, nsegs, size,
-	    &adm->kva, BUS_DMA_NOWAIT | BUS_DMA_COHERENT) != 0)
+	    &adm->kva, BUS_DMA_WAITOK | BUS_DMA_COHERENT) != 0)
 		goto free;
 
 	if (bus_dmamap_load_raw(dmat, adm->map, &adm->seg, nsegs, size,
-	    BUS_DMA_NOWAIT) != 0)
+	    BUS_DMA_WAITOK) != 0)
 		goto unmap;
 
 	bzero(adm->kva, size);
@@ -24604,6 +24687,7 @@ admfree:
 void
 qwz_dmamem_free(bus_dma_tag_t dmat, struct qwz_dmamem *adm)
 {
+	bus_dmamap_unload(dmat, adm->map);
 	bus_dmamem_unmap(dmat, adm->kva, adm->size);
 	bus_dmamem_free(dmat, &adm->seg, 1);
 	bus_dmamap_destroy(dmat, adm->map);

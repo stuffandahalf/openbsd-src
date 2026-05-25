@@ -1,4 +1,4 @@
-/* $OpenBSD: layout-custom.c,v 1.28 2026/05/20 08:54:40 nicm Exp $ */
+/* $OpenBSD: layout-custom.c,v 1.31 2026/05/25 07:55:46 nicm Exp $ */
 
 /*
  * Copyright (c) 2010 Nicholas Marriott <nicholas.marriott@gmail.com>
@@ -288,7 +288,7 @@ layout_parse(struct window *w, const char *layout, char **cause)
 	if (floating_lc != NULL)
 		layout_assign(&wp, floating_lc, PANE_FLOATING);
 
-        /* Fix pane Z indexes. */
+        /* Fix pane z-indexes. */
         while (!TAILQ_EMPTY(&w->z_index)) {
                 wp = TAILQ_FIRST(&w->z_index);
 		TAILQ_REMOVE(&w->z_index, wp, zentry);
@@ -304,8 +304,7 @@ layout_parse(struct window *w, const char *layout, char **cause)
 	layout_print_cell(tiled_lc, __func__, 0);
 
 	/* Free the floating layout cell, no longer needed. */
-	if (floating_lc != NULL)
-		layout_free_cell(floating_lc);
+	layout_free_cell(floating_lc);
 
 	notify_window("window-layout-changed", w);
 
@@ -336,7 +335,7 @@ layout_assign(struct window_pane **wp, struct layout_cell *lc, int flags)
 	case LAYOUT_TOPBOTTOM:
 	case LAYOUT_FLOATING:
 		TAILQ_FOREACH(lcchild, &lc->cells, entry)
-			layout_assign(wp, lcchild, PANE_FLOATING);
+			layout_assign(wp, lcchild, flags);
 		return;
 	}
 }

@@ -1,4 +1,4 @@
-/* $OpenBSD: screen-redraw.c,v 1.118 2026/05/20 08:54:40 nicm Exp $ */
+/* $OpenBSD: screen-redraw.c,v 1.121 2026/05/25 08:07:48 nicm Exp $ */
 
 /*
  * Copyright (c) 2007 Nicholas Marriott <nicholas.marriott@gmail.com>
@@ -702,7 +702,7 @@ screen_redraw_draw_pane_status(struct screen_redraw_ctx *ctx)
 			/* Left not visible. */
 			l = ctx->ox - xoff;
 			x = 0;
-			width = size - i;
+			width = size - l;
 		} else {
 			/* Right not visible. */
 			l = 0;
@@ -710,11 +710,10 @@ screen_redraw_draw_pane_status(struct screen_redraw_ctx *ctx)
 			width = size - x;
 		}
 
-		r = screen_redraw_get_visible_ranges(wp, x, yoff, width, NULL);
-
+		r = tty_check_overlay_range(tty, x, yoff, width);
+		r = screen_redraw_get_visible_ranges(wp, x, yoff, width, r);
 		if (ctx->statustop)
 			yoff += ctx->statuslines;
-
 		for (i = 0; i < r->used; i++) {
 			ri = &r->ranges[i];
 			if (ri->nx == 0)
@@ -1265,7 +1264,6 @@ screen_redraw_get_visible_ranges(struct window_pane *base_wp, u_int px,
 	return (r);
 }
 
-
 /* Draw one pane. */
 static void
 screen_redraw_draw_pane(struct screen_redraw_ctx *ctx, struct window_pane *wp)
@@ -1276,82 +1274,96 @@ screen_redraw_draw_pane(struct screen_redraw_ctx *ctx, struct window_pane *wp)
 	struct screen		*s = wp->screen;
 	struct colour_palette	*palette = &wp->palette;
 	struct grid_cell	 defaults;
-	u_int			 i, j, woy, wx, wy, px, py, width;
+	u_int			 j, k, woy, wx, wy, py, width;
 	struct visible_ranges	*r;
 	struct visible_range	*ri;
+
+	/*
+	 * There are 3 coordinate spaces:
+	 *
+	 * window: (0 to w->sx-1, 0 to w->sy-1)
+	 * tty: (0 to tty->sx-1, 0 to tty->sy-1)
+	 * pane: (0 to wp->sx-1, 0 to wp->sy-1)
+	 *
+	 * Transformations:
+	 * window <-> tty (x-axis):
+	 *   window_x = tty_x + ctx->ox
+	 *   tty_x = window_x - ctx->ox
+	 *
+	 * window <-> tty (y-axis):
+	 *   woy = (ctx->statustop) ? ctx->statuslines : 0
+	 *   window_y = tty_y + ctx->oy - woy
+	 *   tty_y = woy + window_y - ctx->oy
+	 *
+	 * window <-> pane (x-axis):
+	 *   window_x = pane_x + wp->xoff
+	 *   pane_x = window_x - wp->xoff
+	 *
+	 * window <-> pane (y-axis):
+	 *   window_y = pane_y + wp->yoff
+	 *   pane_y = window_y - wp->yoff
+	 */
 
 	if (wp->base.mode & MODE_SYNC)
 		screen_write_stop_sync(wp);
 
 	log_debug("%s: %s @%u %%%u", __func__, c->name, w->id, wp->id);
 
+	/* Check if pane completely not visible. */
 	if (wp->xoff + (int)wp->sx <= ctx->ox ||
 	    wp->xoff >= (int)ctx->ox + (int)ctx->sx)
 		return;
 
-	/* woy is window y offset in tty. */
 	if (ctx->statustop)
 		woy = ctx->statuslines;
 	else
 		woy = 0;
-
 	for (j = 0; j < wp->sy; j++) {
 		if (wp->yoff + (int)j < (int)ctx->oy ||
 		    wp->yoff + (int)j >= (int)ctx->oy + (int)ctx->sy)
 			continue;
-		wy = wp->yoff + j;		/* y line within window w. */
-		py = woy + wy - ctx->oy;	/* y line within tty. */
-		if (py > tty->sy)
+		wy = wp->yoff + j;       /* y line within window w */
+		py = woy + wy - ctx->oy; /* y line within tty */
+		if (py > tty->sy) {
 			/* Continue if this line is off of tty. */
 			continue;
-
-		/* Note: i is apparenty not used now that the vr array
-		 *  returns where in s to read from.
-		 */
+		}
 		if (wp->xoff >= (int)ctx->ox &&
 		    wp->xoff + (int)wp->sx <= (int)ctx->ox + (int)ctx->sx) {
 			/* All visible. */
-			i = 0;
 			wx = (u_int)(wp->xoff - (int)ctx->ox);
 			width = wp->sx;
 		} else if (wp->xoff < (int)ctx->ox &&
 		    wp->xoff + (int)wp->sx > (int)ctx->ox + (int)ctx->sx) {
 			/* Both left and right not visible. */
-			i = ctx->ox;
 			wx = 0;
 			width = ctx->sx;
 		} else if (wp->xoff < (int)ctx->ox) {
 			/* Left not visible. */
-			i = (u_int)((int)ctx->ox - wp->xoff);
 			wx = 0;
-			width = wp->sx - i;
+			width = wp->sx - ((u_int)((int)ctx->ox - wp->xoff));
 		} else {
 			/* Right not visible. */
-			i = 0;
 			wx = (u_int)(wp->xoff - (int)ctx->ox);
 			width = ctx->sx - wx;
 		}
-		log_debug("%s: %s %%%u line %u,%u at %u,%u, width %u",
-		    __func__, c->name, wp->id, i, j, wx, wy, width);
 
 		/* Get visible ranges of line before we draw it. */
-		r = screen_redraw_get_visible_ranges(wp, wx, wy, width, NULL);
-
+		r = tty_check_overlay_range(tty, wx, wy, width);
+		r = screen_redraw_get_visible_ranges(wp, wx, wy, width, r);
 		tty_default_colours(&defaults, wp);
-
-		for (i=0; i < r->used; i++) {
-			ri = &r->ranges[i];
+		for (k = 0; k < r->used; k++) {
+			ri = &r->ranges[k];
 			if (ri->nx == 0)
 				continue;
-			px = ri->px;
-			tty_draw_line(tty, s, ri->px - wp->xoff, j,
-			    ri->nx, px, py, &defaults, palette);
+			log_debug("%s: %s %%%u range pane (%u,%u) width %u, tty (%u,%u) width %u",
+			    __func__, c->name, wp->id,
+			    ri->px + (int)ctx->ox - wp->xoff, j, ri->nx,
+			    ri->px, py, ri->nx);
+			tty_draw_line(tty, s, ri->px + (int)ctx->ox - wp->xoff, j, ri->nx,
+			    ri->px, py, &defaults, palette);
 		}
 	}
-
-#ifdef ENABLE_SIXEL
-	tty_draw_images(c, wp, s);
-#endif
 }
 
 /* Draw the panes scrollbars */
@@ -1440,8 +1452,8 @@ screen_redraw_draw_scrollbar(struct screen_redraw_ctx *ctx,
 	struct visible_ranges	*r;
 
 	/*
-	 * Size and offset of window relative to tty.
-	 * Status at top offsets window downward.
+	 * Size and offset of window relative to tty. Status at top offsets
+	 * window downward.
 	 */
 	sx = ctx->sx;
 	sy = tty->sy - ctx->statuslines;
@@ -1449,8 +1461,8 @@ screen_redraw_draw_scrollbar(struct screen_redraw_ctx *ctx,
 	oy = ctx->oy;
 	if (ctx->statustop) {
 		sb_y += ctx->statuslines;
-		sy += ctx->statuslines;		/* Height of window in tty. */
-		oy += ctx->statuslines;		/* Top of window in tty. */
+		sy += ctx->statuslines;	/* height of window */
+		oy += ctx->statuslines;	/* top of window */
 	}
 
 	gc = sb_style->gc;
@@ -1458,17 +1470,20 @@ screen_redraw_draw_scrollbar(struct screen_redraw_ctx *ctx,
 	slgc.fg = gc.bg;
 	slgc.bg = gc.fg;
 
-	if (sb_x + (int)sb_w < 0 || sb_x >= sx || sb_y >= sy)
-		/* Whole sb off screen. */
+	if (sb_x + (int)sb_w < 0 || sb_x >= sx || sb_y >= sy) {
+		/* Whole scrollbar is off screen. */
 		return;
-	if (sb_x < 0)
-		/* Part of sb on screen. */
+	}
+	if (sb_x < 0) {
+		/* Part of scrollbar on screen. */
 		imin = - sb_x;
+	}
 	imax = sb_w + sb_pad;
 	if ((int)imax + sb_x > sx) {
-		if (sb_x > sx)
-			/* Whole sb off screen. */
+		if (sb_x > sx) {
+			/* Whole scrollbar off screen. */
 			return;
+		}
 		imax = sx - sb_x;
 	}
 	jmax = sb_h;
@@ -1482,41 +1497,44 @@ screen_redraw_draw_scrollbar(struct screen_redraw_ctx *ctx,
 	 * sb_y is a window coordinate; convert to tty coordinate by
 	 * subtracting the pan offset oy.
 	 */
-	sb_tty_y = sb_y - oy;	/* scrollbar top in tty coordinates */
-
-	if (sb_tty_y > (int)sy)
-		/* Whole sb off screen. */
+	sb_tty_y = sb_y - oy; /* scrollbar top in tty coordinates */
+	if (sb_tty_y > (int)sy) {
+		/* Whole scrollbar is off screen. */
 		return;
-	if (sb_tty_y < 0)
+	}
+	if (sb_tty_y < 0) {
 		/* Scrollbar starts above visible area; skip those rows. */
 		jmin = -sb_tty_y;
-	if (sb_tty_y + (int)sb_h <= 0)
-		/* Whole sb above visible area. */
+	}
+	if (sb_tty_y + (int)sb_h <= 0) {
+		/* Whole scrollbar above visible area. */
 		return;
+	}
 	jmax = sb_h;
-	if (sb_tty_y + (int)jmax > (int)sy)
+	if (sb_tty_y + (int)jmax > (int)sy) {
 		/* Clip to height of tty. */
 		jmax = sy - sb_tty_y;
+	}
 
 	for (j = jmin; j < jmax; j++) {
-		wy = sb_y + j;		/* window y coordinate. */
-		py = sb_tty_y + j;	/* tty y coordinate. */
+		wy = sb_y + j; /* window y coordinate */
+		py = sb_tty_y + j; /* tty y coordinate */
 		r = tty_check_overlay_range(tty, sb_x, wy, imax);
 		r = screen_redraw_get_visible_ranges(wp, sb_x, wy, imax, r);
 		for (i = imin; i < imax; i++) {
-			px = sb_x + ox + i;	/* tty x coordinate. */
-			wx = sb_x + i;		/* window x coordinate. */
+			px = sb_x + ox + i; /* tty x coordinate */
+			wx = sb_x + i; /* window x coordinate */
 			if (wx < xoff - (int)sb_w - (int)sb_pad ||
 			    px >= sx || px < 0 ||
 			    wy < yoff - 1 ||
 			    py >= sy || py < 0 ||
-			    ! screen_redraw_is_visible(r, wx))
+			    !screen_redraw_is_visible(r, wx))
 				continue;
 			tty_cursor(tty, px, py);
 			if ((sb_pos == PANE_SCROLLBARS_LEFT &&
 			    i >= sb_w && i < sb_w + sb_pad) ||
 			    (sb_pos == PANE_SCROLLBARS_RIGHT &&
-			     i < sb_pad)) {
+			    i < sb_pad)) {
 				tty_cell(tty, &grid_default_cell,
 				    &grid_default_cell, NULL, NULL);
 			} else {

@@ -1,4 +1,4 @@
-/* $OpenBSD: window-tree.c,v 1.75 2026/05/17 16:01:42 nicm Exp $ */
+/* $OpenBSD: window-tree.c,v 1.77 2026/06/01 18:19:51 nicm Exp $ */
 
 /*
  * Copyright (c) 2017 Nicholas Marriott <nicholas.marriott@gmail.com>
@@ -38,8 +38,8 @@ static void		 window_tree_key(struct window_mode_entry *,
 
 #define WINDOW_TREE_DEFAULT_FORMAT \
 	"#{?pane_format," \
-		"#{?pane_marked,#[reverse],}" \
-		"#{pane_current_command}#{?pane_active,*,}#{?pane_marked,M,}" \
+		"#{?pane_marked,#[reverse],}#{?pane_floating_flag,#[italics],}" \
+		"#{pane_current_command}#{pane_flags}" \
 		"#{?#{&&:#{pane_title},#{!=:#{pane_title},#{host_short}}},: \"#{pane_title}\",}" \
 	",window_format," \
 		"#{?window_marked_flag,#[reverse],}" \
@@ -136,6 +136,7 @@ static enum sort_order window_tree_order_seq[] = {
 	SORT_INDEX,
 	SORT_NAME,
 	SORT_ACTIVITY,
+	SORT_Z,
 	SORT_END,
 };
 

@@ -1,4 +1,4 @@
-/* $OpenBSD: ssh-agent.c,v 1.325 2026/04/28 21:32:05 djm Exp $ */
+/* $OpenBSD: ssh-agent.c,v 1.328 2026/05/31 04:31:04 djm Exp $ */
 /*
  * Author: Tatu Ylonen <ylo@cs.hut.fi>
  * Copyright (c) 1995 Tatu Ylonen <ylo@cs.hut.fi>, Espoo, Finland
@@ -77,6 +77,7 @@
 #include "ssh-pkcs11.h"
 #include "sk-api.h"
 #include "myproposal.h"
+#include "version.h"
 
 #ifndef DEFAULT_ALLOWED_PROVIDERS
 # define DEFAULT_ALLOWED_PROVIDERS "/usr/lib*/*,/usr/local/lib*/*"
@@ -97,6 +98,8 @@
 #define AGENT_MAX_DEST_CONSTRAINTS	1024
 /* Maximum number of associated certificate constraints to accept on a key */
 #define AGENT_MAX_EXT_CERTS		1024
+/* Max length of username constraint */
+#define AGENT_USER_CONSTRAINT_MAX_LEN	256
 
 /* XXX store hostkey_sid in a refcounted tree */
 
@@ -1074,13 +1077,13 @@ static int
 parse_dest_constraint_hop(struct sshbuf *b, struct dest_constraint_hop *dch)
 {
 	u_char key_is_ca;
-	size_t elen = 0;
+	size_t elen = 0, userlen = 0;
 	int r;
 	struct sshkey *k = NULL;
 	char *fp;
 
 	memset(dch, '\0', sizeof(*dch));
-	if ((r = sshbuf_get_cstring(b, &dch->user, NULL)) != 0 ||
+	if ((r = sshbuf_get_cstring(b, &dch->user, &userlen)) != 0 ||
 	    (r = sshbuf_get_cstring(b, &dch->hostname, NULL)) != 0 ||
 	    (r = sshbuf_get_string_direct(b, NULL, &elen)) != 0) {
 		error_fr(r, "parse");
@@ -1098,6 +1101,10 @@ parse_dest_constraint_hop(struct sshbuf *b, struct dest_constraint_hop *dch)
 	if (*dch->user == '\0') {
 		free(dch->user);
 		dch->user = NULL;
+	} else if (userlen > AGENT_USER_CONSTRAINT_MAX_LEN) {
+		error_f("user match pattern too long");
+		r = SSH_ERR_INVALID_FORMAT;
+		goto out;
 	}
 	while (sshbuf_len(b) != 0) {
 		dch->keys = xrecallocarray(dch->keys, dch->nkeys,
@@ -2218,7 +2225,8 @@ usage(void)
 	    "       ssh-agent [-TU] [-a bind_address] [-E fingerprint_hash] [-O option]\n"
 	    "                 [-P allowed_providers] [-t life] command [arg ...]\n"
 	    "       ssh-agent [-c | -s] -k\n"
-	    "       ssh-agent -u\n");
+	    "       ssh-agent -u\n"
+	    "       ssh-agent -V\n");
 	exit(1);
 }
 
@@ -2253,7 +2261,7 @@ main(int ac, char **av)
 	if (getrlimit(RLIMIT_NOFILE, &rlim) == -1)
 		fatal("%s: getrlimit: %s", __progname, strerror(errno));
 
-	while ((ch = getopt(ac, av, "cDdksTuUE:a:O:P:t:")) != -1) {
+	while ((ch = getopt(ac, av, "cDdksTuUVE:a:O:P:t:")) != -1) {
 		switch (ch) {
 		case 'E':
 			fingerprint_hash = ssh_digest_alg_by_name(optarg);
@@ -2319,6 +2327,10 @@ main(int ac, char **av)
 		case 'U':
 			U_flag++;
 			break;
+		case 'V':
+			fprintf(stderr, "%s, %s\n",
+			    SSH_VERSION, SSH_OPENSSL_VERSION);
+			exit(0);
 		default:
 			usage();
 		}

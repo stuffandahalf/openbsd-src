@@ -1,4 +1,4 @@
-/* $OpenBSD: window.c,v 1.322 2026/05/24 08:40:43 nicm Exp $ */
+/* $OpenBSD: window.c,v 1.327 2026/06/01 19:59:04 nicm Exp $ */
 
 /*
  * Copyright (c) 2007 Nicholas Marriott <nicholas.marriott@gmail.com>
@@ -455,6 +455,18 @@ window_pane_send_resize(struct window_pane *wp, u_int sx, u_int sy)
 }
 
 int
+window_has_floating_panes(struct window *w)
+{
+	struct window_pane	*wp;
+
+	TAILQ_FOREACH(wp, &w->panes, entry) {
+		if (wp->flags & PANE_FLOATING)
+			return (1);
+	}
+	return (0);
+}
+
+int
 window_has_pane(struct window *w, struct window_pane *wp)
 {
 	struct window_pane	*wp1;
@@ -625,16 +637,11 @@ window_get_active_at(struct window *w, u_int x, u_int y)
 					continue;
 			}
 		} else {
-			/* Floating - include top or or left border. */
+			/* Floating - include all borders. */
 			if ((int)x < xoff - 1 || x > xoff + sx)
 				continue;
-			if (pane_status == PANE_STATUS_TOP) {
-				if ((int)y <= yoff - 2 || y > yoff + sy - 1)
-					continue;
-			} else {
-				if ((int)y < yoff - 1 || y > yoff + sy)
-					continue;
-			}
+			if ((int)y < yoff - 1 || y > yoff + sy)
+				continue;
 		}
 		return (wp);
 	}
@@ -868,8 +875,8 @@ window_pane_previous_by_number(struct window *w, struct window_pane *wp,
 int
 window_pane_index(struct window_pane *wp, u_int *i)
 {
-	struct window_pane	*wq;
 	struct window		*w = wp->window;
+	struct window_pane	*wq;
 
 	*i = options_get_number(w->options, "pane-base-index");
 	TAILQ_FOREACH(wq, &w->panes, entry) {
@@ -877,6 +884,26 @@ window_pane_index(struct window_pane *wp, u_int *i)
 			return (0);
 		}
 		(*i)++;
+	}
+
+	return (-1);
+}
+
+int
+window_pane_zindex(struct window_pane *wp, u_int *i)
+{
+	struct window		*w = wp->window;
+	struct window_pane	*wq;
+
+	*i = 0;
+	TAILQ_FOREACH(wq, &w->z_index, zentry) {
+		if (wq == wp) {
+			if (~wp->flags & PANE_FLOATING)
+				(*i)++;
+			return (0);
+		}
+		if (wq->flags & PANE_FLOATING)
+			(*i)++;
 	}
 
 	return (-1);
@@ -2091,7 +2118,7 @@ window_pane_tiled_geometry(struct window *w, struct window_pane *wp,
 	} else if (args_has(args, 'p')) {
 		size = args_strtonum_and_expand(args, 'p', 0, 100, item,
 		    cause);
-		if (cause == NULL)
+		if (*cause == NULL)
 			size = curval * size / 100;
 	}
 	if (*cause != NULL)
@@ -2114,7 +2141,7 @@ window_pane_floating_geometry(struct window *w, __unused struct window_pane *wp,
     u_int *out_x, u_int *out_y, u_int *out_sx, u_int *out_sy,
     struct cmdq_item *item, struct args *args, char **cause)
 {
-	u_int	x, y, sx = w->sx / 2, sy = w->sy / 2;
+	u_int	x, y, sx = w->sx / 2, sy = w->sy / 4;
 
 	if (args_has(args, 'x')) {
 		sx = args_percentage_and_expand(args, 'x', 0, USHRT_MAX, w->sx,
@@ -2139,8 +2166,12 @@ window_pane_floating_geometry(struct window *w, __unused struct window_pane *wp,
 			x = 4;
 		else {
 			x = w->last_new_pane_x + 4;
-			if (w->last_new_pane_x > w->sx)
+			if (x + sx >= w->sx) {
+				w->last_new_pane_x = 0;
+				w->last_new_pane_y = 0;
 				x = 4;
+				y = 2;
+			}
 		}
 		w->last_new_pane_x = x;
 	}
@@ -2154,8 +2185,12 @@ window_pane_floating_geometry(struct window *w, __unused struct window_pane *wp,
 			y = 2;
 		else {
 			y = w->last_new_pane_y + 2;
-			if (w->last_new_pane_y > w->sy)
+			if (y + sy >= w->sy) {
+				w->last_new_pane_x = 0;
+				w->last_new_pane_y = 0;
+				x = 4;
 				y = 2;
+			}
 		}
 		w->last_new_pane_y = y;
 	}

@@ -1,4 +1,4 @@
-/*	$OpenBSD: qwxvar.h,v 1.33 2026/05/18 12:26:14 stsp Exp $	*/
+/*	$OpenBSD: qwxvar.h,v 1.36 2026/05/31 13:21:55 stsp Exp $	*/
 
 /*
  * Copyright (c) 2018-2019 The Linux Foundation.
@@ -266,9 +266,7 @@ struct ath11k_hw_ops {
 			       struct hal_tcl_data_cmd *tcl_cmd);
 #endif
 	int (*rx_desc_get_first_msdu)(struct hal_rx_desc *desc);
-#if notyet
-	bool (*rx_desc_get_last_msdu)(struct hal_rx_desc *desc);
-#endif
+	int (*rx_desc_get_last_msdu)(struct hal_rx_desc *desc);
 	uint8_t (*rx_desc_get_l3_pad_bytes)(struct hal_rx_desc *desc);
 	uint8_t *(*rx_desc_get_hdr_status)(struct hal_rx_desc *desc);
 	int (*rx_desc_encrypt_valid)(struct hal_rx_desc *desc);
@@ -288,9 +286,7 @@ struct ath11k_hw_ops {
 	uint32_t (*rx_desc_get_msdu_freq)(struct hal_rx_desc *desc);
 	uint8_t (*rx_desc_get_msdu_pkt_type)(struct hal_rx_desc *desc);
 	uint8_t (*rx_desc_get_msdu_nss)(struct hal_rx_desc *desc);
-#ifdef notyet
 	uint8_t (*rx_desc_get_mpdu_tid)(struct hal_rx_desc *desc);
-#endif
 	uint16_t (*rx_desc_get_mpdu_peer_id)(struct hal_rx_desc *desc);
 #if 0
 	void (*rx_desc_copy_attn_end_tlv)(struct hal_rx_desc *fdesc,
@@ -1869,6 +1865,10 @@ struct qwx_softc {
 	struct task		ba_task;
 	struct qwx_ba_task_data	ba_rx;
 
+	/* Task for firmware country code updates. */
+	uint8_t new_alpha2[3];
+	struct task set_cc_task;
+
 	enum ath11k_11d_state	state_11d;
 	int			completed_11d_scan;
 	uint32_t		vdev_id_11d_scan;
@@ -2032,6 +2032,7 @@ void	qwx_init_task(void *);
 int	qwx_newstate(struct ieee80211com *, enum ieee80211_state, int);
 void	qwx_newstate_task(void *);
 int	qwx_bgscan(struct ieee80211com *);
+void	qwx_updatechan(struct ieee80211com *);
 
 struct qwx_node {
 	struct ieee80211_node ni;
@@ -2039,6 +2040,8 @@ struct qwx_node {
 	unsigned int flags;
 #define QWX_NODE_FLAG_HAVE_PAIRWISE_KEY	0x01
 #define QWX_NODE_FLAG_HAVE_GROUP_KEY	0x02
+	uint32_t phymode;
+	enum wmi_peer_chwidth chwidth;
 };
 
 struct ieee80211_node *qwx_node_alloc(struct ieee80211com *);

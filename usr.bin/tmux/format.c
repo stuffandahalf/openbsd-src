@@ -1,4 +1,4 @@
-/* $OpenBSD: format.c,v 1.367 2026/05/19 12:16:25 nicm Exp $ */
+/* $OpenBSD: format.c,v 1.370 2026/06/01 18:19:51 nicm Exp $ */
 
 /*
  * Copyright (c) 2011 Nicholas Marriott <nicholas.marriott@gmail.com>
@@ -2397,6 +2397,35 @@ format_cb_pane_width(struct format_tree *ft)
 	return (NULL);
 }
 
+/* Callback for pane_x. */
+static void *
+format_cb_pane_x(struct format_tree *ft)
+{
+	if (ft->wp != NULL)
+		return (format_printf("%d", ft->wp->xoff));
+	return (NULL);
+}
+
+/* Callback for pane_y. */
+static void *
+format_cb_pane_y(struct format_tree *ft)
+{
+	if (ft->wp != NULL)
+		return (format_printf("%d", ft->wp->yoff));
+	return (NULL);
+}
+
+/* Callback for pane_z. */
+static void *
+format_cb_pane_z(struct format_tree *ft)
+{
+	u_int	idx;
+
+	if (ft->wp != NULL && window_pane_zindex(ft->wp, &idx) == 0)
+		return (format_printf("%u", idx));
+	return (NULL);
+}
+
 /* Callback for pane_zoomed_flag. */
 static void *
 format_cb_pane_zoomed_flag(struct format_tree *ft)
@@ -3481,6 +3510,15 @@ static const struct format_table_entry format_table[] = {
 	},
 	{ "pane_width", FORMAT_TABLE_STRING,
 	  format_cb_pane_width
+	},
+	{ "pane_x", FORMAT_TABLE_STRING,
+	  format_cb_pane_x
+	},
+	{ "pane_y", FORMAT_TABLE_STRING,
+	  format_cb_pane_y
+	},
+	{ "pane_z", FORMAT_TABLE_STRING,
+	  format_cb_pane_z
 	},
 	{ "pane_zoomed_flag", FORMAT_TABLE_STRING,
 	  format_cb_pane_zoomed_flag
@@ -5560,7 +5598,7 @@ format_expand1(struct format_expand_state *es, const char *fmt)
 	const char		*ptr, *s, *style_end = NULL;
 	size_t			 off, len, n, outlen;
 	int			 ch, brackets;
-	char			 expanded[8192];
+	char			 expanded[8192], number[2] = { 0 };
 
 	if (fmt == NULL || *fmt == '\0' || !format_check_time(es))
 		return (xstrdup(""));
@@ -5689,6 +5727,13 @@ format_expand1(struct format_expand_state *es, const char *fmt)
 			continue;
 		default:
 			s = NULL;
+			if (ch >= '1' && ch <= '9') {
+				number[0] = ch;
+				if (format_replace(es, number, 1, &buf, &len,
+				    &off) != 0)
+					break;
+				continue;
+			}
 			if (fmt > style_end) { /* skip inside #[] */
 				if (ch >= 'A' && ch <= 'Z')
 					s = format_upper[ch - 'A'];

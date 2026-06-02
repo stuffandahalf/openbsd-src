@@ -1,4 +1,4 @@
-/*	$OpenBSD: mrt.c,v 1.135 2026/05/07 20:35:19 claudio Exp $ */
+/*	$OpenBSD: mrt.c,v 1.137 2026/05/28 13:15:08 claudio Exp $ */
 
 /*
  * Copyright (c) 2003, 2004 Claudio Jeker <claudio@openbsd.org>
@@ -356,10 +356,9 @@ mrt_dump_entry_mp(struct mrt *mrt, struct prefix *p, uint16_t snum,
 	struct ibuf	*buf, *hbuf = NULL, *h2buf = NULL;
 	struct nexthop	*n;
 	struct bgpd_addr nexthop, *nh;
-	uint16_t	 len;
 	uint8_t		 aid;
 
-	if ((buf = ibuf_dynamic(0, MAX_PKTSIZE)) == NULL) {
+	if ((buf = ibuf_dynamic(0, MAX_EXT_PKTSIZE)) == NULL) {
 		log_warn("mrt_dump_entry_mp: ibuf_dynamic");
 		return (-1);
 	}
@@ -367,7 +366,6 @@ mrt_dump_entry_mp(struct mrt *mrt, struct prefix *p, uint16_t snum,
 	if (mrt_attr_dump(buf, prefix_aspath(p), prefix_communities(p),
 	    NULL, 0) == -1)
 		goto fail;
-	len = ibuf_size(buf);
 
 	if ((h2buf = ibuf_dynamic(MRT_BGP4MP_IPv4_HEADER_SIZE +
 	    MRT_BGP4MP_IPv4_ENTRY_SIZE, MRT_BGP4MP_IPv6_HEADER_SIZE +
@@ -495,19 +493,18 @@ mrt_dump_entry_mp(struct mrt *mrt, struct prefix *p, uint16_t snum,
 	if (pt_writebuf(h2buf, p->pt, 0, 0, 0) == -1)
 		goto fail;
 
-	if (ibuf_add_n16(h2buf, len) == -1)
+	if (ibuf_add_n16(h2buf, ibuf_size(buf)) == -1)
 		goto fail;
-	len += ibuf_size(h2buf);
 
 	if (mrt_dump_hdr_rde(&hbuf, MSG_PROTOCOL_BGP4MP, BGP4MP_ENTRY,
-	    len) == -1)
+	    ibuf_size(h2buf) + ibuf_size(buf)) == -1)
 		goto fail;
 
 	ibuf_close(mrt->wbuf, hbuf);
 	ibuf_close(mrt->wbuf, h2buf);
 	ibuf_close(mrt->wbuf, buf);
 
-	return (len + MRT_HEADER_SIZE);
+	return (0);
 
 fail:
 	log_warn("%s: ibuf error", __func__);
@@ -534,7 +531,7 @@ mrt_dump_entry(struct mrt *mrt, struct prefix *p, uint16_t snum,
 		/* only able to dump pure IPv4/IPv6 */
 		return (0);
 
-	if ((buf = ibuf_dynamic(0, MAX_PKTSIZE)) == NULL) {
+	if ((buf = ibuf_dynamic(0, MAX_EXT_PKTSIZE)) == NULL) {
 		log_warn("mrt_dump_entry: ibuf_dynamic");
 		return (-1);
 	}
@@ -599,7 +596,7 @@ mrt_dump_entry(struct mrt *mrt, struct prefix *p, uint16_t snum,
 	ibuf_close(mrt->wbuf, hbuf);
 	ibuf_close(mrt->wbuf, buf);
 
-	return (len + MRT_HEADER_SIZE);
+	return (0);
 
 fail:
 	log_warn("%s: ibuf error", __func__);
@@ -660,7 +657,7 @@ mrt_dump_entry_v2_rib(struct rib_entry *re, struct ibuf **nb, struct ibuf **apb,
 			if (ibuf_add_n32(buf, p->path_id) == -1)
 				goto fail;
 
-		if ((tbuf = ibuf_dynamic(0, MAX_PKTSIZE)) == NULL)
+		if ((tbuf = ibuf_dynamic(0, MAX_EXT_PKTSIZE)) == NULL)
 			goto fail;
 		if (mrt_attr_dump(tbuf, prefix_aspath(p), prefix_communities(p),
 		    nh, 1) == -1)

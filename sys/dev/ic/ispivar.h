@@ -42,6 +42,13 @@
 #define DPRINTF(x)
 #endif
 
+enum ispi_version {
+	SPI_BAYTRAIL,
+	SPI_BRASWELL,
+	SPI_LYNXPOINT,
+	SPI_SUNRISEPOINT
+};
+
 struct ispi_softc {
 	struct device		sc_dev;
 
@@ -69,6 +76,7 @@ struct ispi_softc {
 	struct aml_node		*sc_devnode;
 #endif
 	u_int32_t		sc_caps;
+	enum ispi_version	sc_vers;
 };
 
 void		ispi_init(struct ispi_softc *sc);

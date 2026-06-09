@@ -63,18 +63,24 @@ ispi_pci_attach(struct device *parent, struct device *self, void *aux)
 	pci_intr_handle_t ih;
 	const char *intrstr = NULL;
 	uint8_t type;
-	int standalone, mtype;
+	int mtype;
 
 	memcpy(&sc->sc_paa, pa, sizeof(sc->sc_paa));
 
 	pci_set_powerstate(pa->pa_pc, pa->pa_tag, PCI_PMCSR_STATE_D0);
 
+	mtype = pci_mapreg_type(pa->pa_pc, pa->pa_tag, PCI_MAPREG_START);
+	if (pci_mapreg_map(pa, PCI_MAPREG_START, mtype, 0,
+	    &sc->sc_iot, &sc->sc_ioh, NULL, &iosize, 0)) {
+		printf(": can't map mem space\n");
+		return;
+	}
 
 	switch (PCI_PRODUCT(pa->pa_id)) {
 	case PCI_PRODUCT_INTEL_9SERIES_LP_SPI:
-		standalone = true;
-		mtype = PCI_MAPREG_MEM_TYPE_32BIT;
+		sc->sc_vers = SPI_LYNXPOINT;
 
+		/* SPT */
 		sc->sc_lpss_reg_offset = 0x800;
 		sc->sc_reg_cs_ctrl = 0x18;
 		sc->sc_rx_threshold = 2;
@@ -83,8 +89,7 @@ ispi_pci_attach(struct device *parent, struct device *self, void *aux)
 		sc->sc_ssp_clk = 9600000;
 		break;
 	case PCI_PRODUCT_INTEL_100SERIES_LP_SPI_3:
-		standalone = false;
-		mtype = PCI_MAPREG_MEM_TYPE_64BIT;
+		sc->sc_vers = SPI_SUNRISEPOINT;
 
 		/* SPT */
 		sc->sc_lpss_reg_offset = 0x200;
@@ -99,13 +104,14 @@ ispi_pci_attach(struct device *parent, struct device *self, void *aux)
 		return;
 	}
 
-	if (pci_mapreg_map(pa, PCI_MAPREG_START, mtype, 0,
-	    &sc->sc_iot, &sc->sc_ioh, NULL, &iosize, 0)) {
-		printf(": can't map mem space\n");
-		return;
-	}
+	sc->sc_caps = 0;
+	if (sc->sc_vers == SPI_SUNRISEPOINT) {
+		/*
+		 * sunrise point supports capability validation 
+		 * and includes a dedicated reset register
+		 */
 
-	if (!standalone) {
+		/* validate capabilities */
 		sc->sc_caps = bus_space_read_4(sc->sc_iot, sc->sc_ioh, LPSS_CAPS);
 		type = (sc->sc_caps & LPSS_CAPS_TYPE_MASK) >> LPSS_CAPS_TYPE_SHIFT;
 		if (type != LPSS_CAPS_TYPE_SPI) {
@@ -113,11 +119,12 @@ ispi_pci_attach(struct device *parent, struct device *self, void *aux)
 			bus_space_unmap(sc->sc_iot, sc->sc_ioh, iosize);
 			return;
 		}
-	}
 
-	/* un-reset - page 958 */
-	bus_space_write_4(sc->sc_iot, sc->sc_ioh, LPSS_RESETS,
-	    (LPSS_RESETS_FUNC | LPSS_RESETS_IDMA));
+		/* un-reset - page 958 */
+		if (sc->sc_vers == SPI_SUNRISEPOINT)
+			bus_space_write_4(sc->sc_iot, sc->sc_ioh, LPSS_RESETS,
+				(LPSS_RESETS_FUNC | LPSS_RESETS_IDMA));
+	}
 
 	/* install interrupt handler */
 	if (pci_intr_map(&sc->sc_paa, &ih) == 0) {

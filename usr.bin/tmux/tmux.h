@@ -1,4 +1,4 @@
-/* $OpenBSD: tmux.h,v 1.1325 2026/05/22 11:55:43 nicm Exp $ */
+/* $OpenBSD: tmux.h,v 1.1331 2026/06/01 20:10:01 nicm Exp $ */
 
 /*
  * Copyright (c) 2007 Nicholas Marriott <nicholas.marriott@gmail.com>
@@ -1296,6 +1296,8 @@ struct window_pane {
 
 	int		 border_gc_set;
 	struct grid_cell border_gc;
+	int		 active_border_gc_set;
+	struct grid_cell active_border_gc;
 
 	int		 control_bg;
 	int		 control_fg;
@@ -1427,7 +1429,6 @@ TAILQ_HEAD(winlink_stack, winlink);
 enum layout_type {
 	LAYOUT_LEFTRIGHT,
 	LAYOUT_TOPBOTTOM,
-	LAYOUT_FLOATING,
 	LAYOUT_WINDOWPANE
 };
 
@@ -1703,9 +1704,8 @@ struct tty_ctx {
 #define TTY_CTX_WINDOW_BIGGER 0x4
 #define TTY_CTX_SYNC 0x8
 #define TTY_CTX_OVERLAY_SYNC 0x10
-#define TTY_CTX_CELL_DRAW_LINE 0x20
-#define TTY_CTX_CELL_INVALIDATE 0x40
-#define TTY_CTX_PANE_OBSCURED 0x80
+#define TTY_CTX_CELL_INVALIDATE 0x20
+#define TTY_CTX_PANE_OBSCURED 0x40
 
 	union {
 		u_int			 n;
@@ -2333,6 +2333,7 @@ enum sort_order {
 	SORT_NAME,
 	SORT_ORDER,
 	SORT_SIZE,
+	SORT_Z,
 	SORT_END,
 };
 
@@ -3305,7 +3306,7 @@ void	 screen_redraw_screen(struct client *);
 void	 screen_redraw_pane(struct client *, struct window_pane *, int);
 int	 screen_redraw_is_visible(struct visible_ranges *, u_int);
 struct visible_ranges *screen_redraw_get_visible_ranges(struct window_pane *,
-	     u_int, u_int, u_int, struct visible_ranges *);
+	     int, int, u_int, struct visible_ranges *);
 
 /* screen.c */
 void	 screen_init(struct screen *, u_int, u_int, u_int);
@@ -3366,6 +3367,7 @@ struct window	*window_create(u_int, u_int, u_int, u_int);
 void		 window_pane_set_event(struct window_pane *);
 struct window_pane *window_get_active_at(struct window *, u_int, u_int);
 struct window_pane *window_find_string(struct window *, const char *);
+int		 window_has_floating_panes(struct window *);
 int		 window_has_pane(struct window *, struct window_pane *);
 int		 window_set_active_pane(struct window *, struct window_pane *,
 		     int);
@@ -3389,6 +3391,7 @@ struct window_pane *window_pane_next_by_number(struct window *,
 struct window_pane *window_pane_previous_by_number(struct window *,
 			struct window_pane *, u_int);
 int		 window_pane_index(struct window_pane *, u_int *);
+int		 window_pane_zindex(struct window_pane *, u_int *);
 u_int		 window_count_panes(struct window *, int);
 void		 window_destroy_panes(struct window *);
 struct window_pane *window_pane_find_by_id_str(const char *);

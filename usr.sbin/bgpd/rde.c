@@ -1,4 +1,4 @@
-/*	$OpenBSD: rde.c,v 1.703 2026/05/21 15:20:27 claudio Exp $ */
+/*	$OpenBSD: rde.c,v 1.705 2026/05/28 09:10:22 claudio Exp $ */
 
 /*
  * Copyright (c) 2003, 2004 Henning Brauer <henning@openbsd.org>
@@ -57,7 +57,7 @@ void		 rde_update_withdraw(struct rde_peer *, uint32_t,
 int		 rde_attr_parse(struct ibuf *, struct rde_peer *,
 		    struct filterstate *, struct ibuf *, struct ibuf *);
 int		 rde_attr_add(struct filterstate *, struct ibuf *);
-uint8_t		 rde_attr_missing(struct rde_aspath *, int, uint16_t);
+uint8_t		 rde_attr_missing(struct rde_aspath *, int, size_t);
 int		 rde_get_mp_nexthop(struct ibuf *, uint8_t,
 		    struct rde_peer *, struct filterstate *);
 void		 rde_as4byte_fixup(struct rde_peer *, struct rde_aspath *);
@@ -2514,7 +2514,7 @@ rde_attr_add(struct filterstate *state, struct ibuf *buf)
 }
 
 uint8_t
-rde_attr_missing(struct rde_aspath *a, int ebgp, uint16_t nlrilen)
+rde_attr_missing(struct rde_aspath *a, int ebgp, size_t nlrilen)
 {
 	/* ATTR_MP_UNREACH_NLRI may be sent alone */
 	if (nlrilen == 0 && a->flags & F_ATTR_MP_UNREACH &&
@@ -2525,8 +2525,7 @@ rde_attr_missing(struct rde_aspath *a, int ebgp, uint16_t nlrilen)
 		return (ATTR_ORIGIN);
 	if ((a->flags & F_ATTR_ASPATH) == 0)
 		return (ATTR_ASPATH);
-	if ((a->flags & F_ATTR_MP_REACH) == 0 &&
-	    (a->flags & F_ATTR_NEXTHOP) == 0)
+	if (nlrilen != 0 && (a->flags & F_ATTR_NEXTHOP) == 0)
 		return (ATTR_NEXTHOP);
 	if (!ebgp)
 		if ((a->flags & F_ATTR_LOCALPREF) == 0)
@@ -2751,11 +2750,14 @@ rde_as4byte_fixup(struct rde_peer *peer, struct rde_aspath *a)
 	uint32_t	 as;
 
 	/*
-	 * if either ATTR_AS4_AGGREGATOR or ATTR_AS4_PATH is present
-	 * try to fixup the attributes.
-	 * Do not fixup if F_ATTR_PARSE_ERR is set.
+	 * Only fix up paths for which all these conditions hold:
+	 *  - ATTR_AS4_AGGREGATOR or ATTR_AS4_PATH is present
+	 *  - ATTR_ASPATH is present as well
+	 *  - no parse error (F_ATTR_PARSE_ERR)
 	 */
-	if (!(a->flags & F_ATTR_AS4BYTE_NEW) || a->flags & F_ATTR_PARSE_ERR)
+	if ((a->flags & F_ATTR_AS4BYTE_NEW) == 0 ||
+	    (a->flags & F_ATTR_ASPATH) == 0 ||
+	    a->flags & F_ATTR_PARSE_ERR)
 		return;
 
 	/* first get the attributes */
@@ -3207,10 +3209,14 @@ rde_dump_upcall(struct rib_entry *re, void *ptr)
 }
 
 static void
-rde_dump_adjout_upcall(struct rde_peer *peer, struct pt_entry *pte,
-    struct adjout_prefix *p, void *ptr)
+rde_dump_adjout_upcall(struct pt_entry *pte, struct adjout_prefix *p,
+    uint32_t bid, void *ptr)
 {
 	struct rde_dump_ctx	*ctx = ptr;
+	struct rde_peer		*peer;
+
+	if ((peer = peer_get(ctx->peerid)) == NULL)
+		return;
 
 	rde_dump_adjout_filter(peer, pte, p, &ctx->req);
 }
@@ -3342,7 +3348,14 @@ rde_dump_ctx_new(struct ctl_show_rib_request *req, pid_t pid,
 
 			do {
 				struct pt_entry *pte;
+				uint32_t bid;
 				int found;
+
+				ctx->peerid = peer->conf.id;
+
+				bid = peer->adjout_bid;
+				if (bid == 0)
+					continue;
 
 				if (req->flags & F_SHORTER) {
 					for (plen = 0; plen <= req->prefixlen;
@@ -3353,12 +3366,12 @@ rde_dump_ctx_new(struct ctl_show_rib_request *req, pid_t pid,
 							continue;
 						/* dump all matching paths */
 						for (p = adjout_prefix_first(
-						    peer, pte);
+						    pte, bid);
 						    p != NULL;
-						    p = adjout_prefix_next(
-						    peer, pte, p)) {
+						    p = adjout_prefix_next(pte,
+						    bid, p)) {
 							rde_dump_adjout_upcall(
-							    peer, pte, p, ctx);
+							    pte, p, bid, ctx);
 						}
 					}
 					continue;
@@ -3374,12 +3387,12 @@ rde_dump_ctx_new(struct ctl_show_rib_request *req, pid_t pid,
 				do {
 					/* dump all matching paths */
 					found = 0;
-					for (p = adjout_prefix_first(peer, pte);
+					for (p = adjout_prefix_first(pte, bid);
 					    p != NULL;
-					    p = adjout_prefix_next(peer, pte,
+					    p = adjout_prefix_next(pte, bid,
 					    p)) {
-						rde_dump_adjout_upcall(peer,
-						    pte, p, ctx);
+						rde_dump_adjout_upcall(pte, p,
+						    bid, ctx);
 						found = 1;
 					}
 					plen = pte->prefixlen - 1;
@@ -3396,7 +3409,7 @@ rde_dump_ctx_new(struct ctl_show_rib_request *req, pid_t pid,
 					}
 				} while (!found && pte != NULL);
 			} while ((peer = peer_match(&req->neighbor,
-			    peer->conf.id)));
+			    ctx->peerid)) != NULL);
 
 			imsg_compose(ibuf_se_ctl, IMSG_CTL_END, 0, ctx->req.pid,
 			    -1, NULL, 0);
@@ -3649,9 +3662,11 @@ rde_evaluate_all(void)
 
 /* flush Adj-RIB-Out by withdrawing all prefixes */
 static void
-rde_up_flush_upcall(struct rde_peer *peer, struct pt_entry *pte,
-    struct adjout_prefix *p, void *ptr)
+rde_up_flush_upcall(struct pt_entry *pte, struct adjout_prefix *p,
+    uint32_t bid, void *ptr)
 {
+	struct rde_peer *peer = ptr;
+
 	adjout_prefix_withdraw(peer, pte, p);
 }
 

@@ -1,4 +1,4 @@
-/*	$OpenBSD: parse.y,v 1.500 2026/05/19 12:23:41 claudio Exp $ */
+/*	$OpenBSD: parse.y,v 1.502 2026/05/28 08:47:09 claudio Exp $ */
 
 /*
  * Copyright (c) 2002, 2003, 2004 Henning Brauer <henning@openbsd.org>
@@ -681,6 +681,7 @@ rtr		: RTR address	{
 			currtr->remote_port = RTR_PORT;
 			if (insert_rtr(currtr) == -1) {
 				free(currtr);
+				currtr = NULL;
 				YYERROR;
 			}
 			currtr = NULL;
@@ -691,6 +692,7 @@ rtr		: RTR address	{
 		} '{' optnl rtropt_l optnl '}' {
 			if (insert_rtr(currtr) == -1) {
 				free(currtr);
+				currtr = NULL;
 				YYERROR;
 			}
 			currtr = NULL;
@@ -1755,6 +1757,7 @@ neighbor	: { curpeer = new_peer(); }
 
 			if (neighbor_consistent(curpeer) == -1) {
 				free(curpeer);
+				curpeer = curgroup;
 				YYERROR;
 			}
 			if (RB_INSERT(peer_head, new_peers, curpeer) != NULL)
@@ -1772,12 +1775,14 @@ group		: GROUP string			{
 				    $2, sizeof(curgroup->conf.group) - 1);
 				free($2);
 				free(curgroup);
+				curgroup = NULL;
 				YYERROR;
 			}
 			free($2);
 			if (get_id(curgroup)) {
 				yyerror("get_id failed");
 				free(curgroup);
+				curgroup = NULL;
 				YYERROR;
 			}
 		} '{' groupopts_l '}'		{
@@ -2066,6 +2071,19 @@ peeropts	: REMOTEAS as4number	{
 			curpeer->conf.capabilities.ext_msg = $4;
 		}
 		| ANNOUNCE EXTENDED NEXTHOP yesnoenforce {
+			if ($4 != 0) {
+				struct rde_rib *rr;
+
+				rr = find_rib("Loc-RIB");
+				if (rr == NULL)
+					fatalx("cannot find the main RIB!");
+
+				if ((rr->flags & F_RIB_NOFIBSYNC) == 0) {
+					yyerror("announce extended nexthop "
+					    "requires 'fib-update no'");
+					YYERROR;
+				}
+			}
 			curpeer->conf.capabilities.ext_nh[AID_VPN_IPv4] =
 			    curpeer->conf.capabilities.ext_nh[AID_INET] = $4;
 		}

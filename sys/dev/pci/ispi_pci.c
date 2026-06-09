@@ -101,6 +101,7 @@ ispi_pci_attach(struct device *parent, struct device *self, void *aux)
 		break;
 	default:
 		printf(": unknown parameters\n");
+		bus_space_unmap(sc->sc_iot, sc->sc_ioh, iosize);
 		return;
 	}
 

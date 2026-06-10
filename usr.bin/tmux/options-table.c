@@ -1,4 +1,4 @@
-/* $OpenBSD: options-table.c,v 1.212 2026/05/27 18:57:10 nicm Exp $ */
+/* $OpenBSD: options-table.c,v 1.215 2026/06/10 16:08:03 nicm Exp $ */
 
 /*
  * Copyright (c) 2011 Nicholas Marriott <nicholas.marriott@gmail.com>
@@ -648,6 +648,14 @@ const struct options_table_entry options_table[] = {
 	  .text = "Colour of not active panes for 'display-panes'."
 	},
 
+	{ .name = "display-panes-format",
+	  .type = OPTIONS_TABLE_STRING,
+	  .scope = OPTIONS_TABLE_SESSION,
+	  .default_str = "#[align=right]#{pane_width}x#{pane_height}",
+	  .text = "Format of text shown by 'display-panes', expanded for each "
+		  "pane."
+	},
+
 	{ .name = "display-panes-time",
 	  .type = OPTIONS_TABLE_NUMBER,
 	  .scope = OPTIONS_TABLE_SESSION,
@@ -731,7 +739,7 @@ const struct options_table_entry options_table[] = {
 	  .flags = OPTIONS_TABLE_IS_STYLE,
 	  .separator = ",",
 	  .text = "Style of the command prompt when in command mode, if "
-		  "'mode-keys' is set to 'vi'."
+		  "'status-keys' is set to 'vi'."
 	},
 
 	{ .name = "message-format",
@@ -1029,7 +1037,8 @@ const struct options_table_entry options_table[] = {
 	  .flags = OPTIONS_TABLE_IS_ARRAY,
 	  .default_str = "DISPLAY KRB5CCNAME MSYSTEM SSH_ASKPASS SSH_AUTH_SOCK "
 			 "SSH_AGENT_PID SSH_CONNECTION WAYLAND_DISPLAY "
-			 "WINDOWID XAUTHORITY",
+			 "WINDOWID XAUTHORITY XDG_CURRENT_DESKTOP "
+			 "XDG_SESSION_DESKTOP XDG_SESSION_TYPE",
 	  .text = "List of environment variables to update in the session "
 		  "environment when a client is attached."
 	},

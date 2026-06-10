@@ -1,4 +1,4 @@
-/* $OpenBSD: ssl_local.h,v 1.39 2026/05/31 14:34:44 jsing Exp $ */
+/* $OpenBSD: ssl_local.h,v 1.42 2026/06/08 11:38:04 tb Exp $ */
 /* Copyright (C) 1995-1998 Eric Young (eay@cryptsoft.com)
  * All rights reserved.
  *
@@ -1177,15 +1177,17 @@ int ssl_version_set_min(const SSL_METHOD *meth, uint16_t proto_ver,
     uint16_t max_tls_ver, uint16_t *out_tls_ver, uint16_t *out_proto_ver);
 int ssl_version_set_max(const SSL_METHOD *meth, uint16_t proto_ver,
     uint16_t min_tls_ver, uint16_t *out_tls_ver, uint16_t *out_proto_ver);
-int ssl_enabled_tls_version_range(SSL *s, uint16_t *min_ver, uint16_t *max_ver);
-int ssl_supported_tls_version_range(SSL *s, uint16_t *min_ver, uint16_t *max_ver);
+int ssl_enabled_tls_version_range(const SSL *s, uint16_t *min_ver,
+    uint16_t *max_ver);
+int ssl_supported_tls_version_range(const SSL *s, uint16_t *min_ver,
+    uint16_t *max_ver);
 uint16_t ssl_tls_version(uint16_t version);
-uint16_t ssl_effective_tls_version(SSL *s);
-int ssl_max_supported_version(SSL *s, uint16_t *max_ver);
-int ssl_max_legacy_version(SSL *s, uint16_t *max_ver);
-int ssl_max_shared_version(SSL *s, uint16_t peer_ver, uint16_t *max_ver);
-int ssl_check_version_from_server(SSL *s, uint16_t server_version);
-int ssl_legacy_stack_version(SSL *s, uint16_t version);
+uint16_t ssl_effective_tls_version(const SSL *s);
+int ssl_max_supported_version(const SSL *s, uint16_t *max_ver);
+int ssl_max_legacy_version(const SSL *s, uint16_t *max_ver);
+int ssl_max_shared_version(const SSL *s, uint16_t peer_ver, uint16_t *max_ver);
+int ssl_check_version_from_server(const SSL *s, uint16_t server_version);
+int ssl_legacy_stack_version(const SSL *s, uint16_t version);
 int ssl_cipher_in_list(STACK_OF(SSL_CIPHER) *ciphers, const SSL_CIPHER *cipher);
 int ssl_cipher_allowed_in_tls_version_range(const SSL_CIPHER *cipher,
     uint16_t min_ver, uint16_t max_ver);
@@ -1307,7 +1309,6 @@ long	ssl3_callback_ctrl(SSL *s, int cmd, void (*fp)(void));
 long	ssl3_ctx_callback_ctrl(SSL_CTX *s, int cmd, void (*fp)(void));
 int	ssl3_pending(const SSL *s);
 
-int ssl3_handshake_msg_hdr_len(SSL *s);
 int ssl3_handshake_msg_start(SSL *s, CBB *handshake, CBB *body,
     uint8_t msg_type);
 int ssl3_handshake_msg_finish(SSL *s, CBB *handshake);
@@ -1335,7 +1336,8 @@ int ssl_kex_derive_dhe(DH *dh, DH *dh_peer,
 int ssl_kex_dummy_ecdhe_x25519(EVP_PKEY *pkey);
 int ssl_kex_generate_ecdhe_ecp(EC_KEY *ecdh, int nid);
 int ssl_kex_public_ecdhe_ecp(EC_KEY *ecdh, CBB *cbb);
-int ssl_kex_peer_public_ecdhe_ecp(EC_KEY *ecdh, int nid, CBS *cbs);
+int ssl_kex_peer_public_ecdhe_ecp(EC_KEY *ecdh, int nid, CBS *cbs,
+    int *decode_error);
 int ssl_kex_derive_ecdhe_ecp(EC_KEY *ecdh, EC_KEY *ecdh_peer,
     uint8_t **shared_key, size_t *shared_key_len);
 

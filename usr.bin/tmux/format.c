@@ -1,4 +1,4 @@
-/* $OpenBSD: format.c,v 1.370 2026/06/01 18:19:51 nicm Exp $ */
+/* $OpenBSD: format.c,v 1.374 2026/06/08 21:19:52 nicm Exp $ */
 
 /*
  * Copyright (c) 2011 Nicholas Marriott <nicholas.marriott@gmail.com>
@@ -116,6 +116,8 @@ format_job_cmp(struct format_job *fj1, struct format_job *fj2)
 #define FORMAT_NOT 0x80000
 #define FORMAT_NOT_NOT 0x100000
 #define FORMAT_REPEAT 0x200000
+#define FORMAT_QUOTE_ARGUMENTS 0x400000
+#define FORMAT_RELATIVE 0x800000
 
 /* Limit on recursion. */
 #define FORMAT_LOOP_LIMIT 100
@@ -1021,7 +1023,7 @@ format_cb_pane_floating_flag(struct format_tree *ft)
 	struct window_pane	*wp = ft->wp;
 
 	if (wp != NULL) {
-		if (wp->flags & PANE_FLOATING)
+		if (window_pane_is_floating(wp))
 			return (xstrdup("1"));
 		return (xstrdup("0"));
 	}
@@ -4044,6 +4046,50 @@ format_pretty_time(time_t t, int seconds)
 	return (xstrdup(s));
 }
 
+/* Make a relative time. */
+static char *
+format_relative_time(time_t t)
+{
+	time_t	now, age;
+	u_int	d, h, m, s;
+	char	out[32], sign;
+
+	time(&now);
+	if (t == now)
+		return (xstrdup("0s"));
+	if (t > now) {
+		sign = '+';
+		age = t - now;
+	} else {
+		sign = '-';
+		age = now - t;
+	}
+
+	d = age / 86400;
+	h = (age % 86400) / 3600;
+	m = (age % 3600) / 60;
+	s = age % 60;
+
+	if (d != 0) {
+		if (h != 0)
+			xsnprintf(out, sizeof out, "%c%ud%uh", sign, d, h);
+		else
+			xsnprintf(out, sizeof out, "%c%ud", sign, d);
+	} else if (h != 0) {
+		if (m != 0)
+			xsnprintf(out, sizeof out, "%c%uh%um", sign, h, m);
+		else
+			xsnprintf(out, sizeof out, "%c%uh", sign, h);
+	} else if (m != 0) {
+		if (s != 0)
+			xsnprintf(out, sizeof out, "%c%um%us", sign, m, s);
+		else
+			xsnprintf(out, sizeof out, "%c%um", sign, m);
+	} else
+		xsnprintf(out, sizeof out, "%c%us", sign, s);
+	return (xstrdup(out));
+}
+
 /* Find a format entry. */
 static char *
 format_find(struct format_tree *ft, const char *key, int modifiers,
@@ -4125,7 +4171,9 @@ found:
 		}
 		if (t == 0)
 			return (NULL);
-		if (modifiers & FORMAT_PRETTY)
+		if (modifiers & FORMAT_RELATIVE)
+			found = format_relative_time(t);
+		else if (modifiers & FORMAT_PRETTY)
 			found = format_pretty_time(t, 0);
 		else {
 			if (time_format != NULL) {
@@ -4162,6 +4210,11 @@ found:
 	if (modifiers & FORMAT_QUOTE_STYLE) {
 		saved = found;
 		found = format_quote_style(saved);
+		free(saved);
+	}
+	if (modifiers & FORMAT_QUOTE_ARGUMENTS) {
+		saved = found;
+		found = args_escape(saved);
 		free(saved);
 	}
 	return (found);
@@ -5125,6 +5178,8 @@ format_replace(struct format_expand_state *es, const char *key, size_t keylen,
 					break;
 				if (strchr(fm->argv[0], 'p') != NULL)
 					modifiers |= FORMAT_PRETTY;
+				else if (strchr(fm->argv[0], 'r') != NULL)
+					modifiers |= FORMAT_RELATIVE;
 				else if (fm->argc >= 2 &&
 				    strchr(fm->argv[0], 'f') != NULL) {
 					free(time_format);
@@ -5137,6 +5192,8 @@ format_replace(struct format_expand_state *es, const char *key, size_t keylen,
 				else if (strchr(fm->argv[0], 'e') != NULL ||
 				    strchr(fm->argv[0], 'h') != NULL)
 					modifiers |= FORMAT_QUOTE_STYLE;
+				else if (strchr(fm->argv[0], 'a') != NULL)
+					modifiers |= FORMAT_QUOTE_ARGUMENTS;
 				break;
 			case 'E':
 				modifiers |= FORMAT_EXPAND;
@@ -5598,7 +5655,7 @@ format_expand1(struct format_expand_state *es, const char *fmt)
 	const char		*ptr, *s, *style_end = NULL;
 	size_t			 off, len, n, outlen;
 	int			 ch, brackets;
-	char			 expanded[8192], number[2] = { 0 };
+	char			 expanded[8192];
 
 	if (fmt == NULL || *fmt == '\0' || !format_check_time(es))
 		return (xstrdup(""));
@@ -5727,13 +5784,6 @@ format_expand1(struct format_expand_state *es, const char *fmt)
 			continue;
 		default:
 			s = NULL;
-			if (ch >= '1' && ch <= '9') {
-				number[0] = ch;
-				if (format_replace(es, number, 1, &buf, &len,
-				    &off) != 0)
-					break;
-				continue;
-			}
 			if (fmt > style_end) { /* skip inside #[] */
 				if (ch >= 'A' && ch <= 'Z')
 					s = format_upper[ch - 'A'];

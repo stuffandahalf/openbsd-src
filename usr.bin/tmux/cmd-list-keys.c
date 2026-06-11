@@ -1,4 +1,4 @@
-/* $OpenBSD: cmd-list-keys.c,v 1.74 2026/04/02 09:58:14 nicm Exp $ */
+/* $OpenBSD: cmd-list-keys.c,v 1.76 2026/06/10 18:32:33 nicm Exp $ */
 
 /*
  * Copyright (c) 2007 Nicholas Marriott <nicholas.marriott@gmail.com>
@@ -35,7 +35,7 @@
 	","							\
 	"bind-key #{?key_has_repeat,#{?key_repeat,-r,  },} "	\
 	"-T #{p|#{key_table_width}:key_table} "			\
-	"#{p|#{key_string_width}:key_string} "			\
+	"#{p|#{key_string_width}:#{q|a:key_string}} "		\
 	"#{key_command}}"
 
 static enum cmd_retval cmd_list_keys_exec(struct cmd *, struct cmdq_item *);
@@ -237,7 +237,7 @@ cmd_list_keys_exec(struct cmd *self, struct cmdq_item *item)
 		cmd_list_keys_format_add_key_binding(ft, l[i], prefix);
 
 		line = format_expand(ft, template);
-		if ((single && tc != NULL) || n == 1)
+		if (single && tc != NULL && (~tc->flags & CLIENT_CONTROL))
 			status_message_set(tc, -1, 1, 0, 0, "%s", line);
 		else if (*line != '\0')
 			cmdq_print(item, "%s", line);

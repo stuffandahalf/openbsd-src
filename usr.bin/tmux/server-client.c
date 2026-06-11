@@ -1,4 +1,4 @@
-/* $OpenBSD: server-client.c,v 1.460 2026/05/28 10:45:17 nicm Exp $ */
+/* $OpenBSD: server-client.c,v 1.464 2026/06/08 23:06:21 nicm Exp $ */
 
 /*
  * Copyright (c) 2009 Nicholas Marriott <nicholas.marriott@gmail.com>
@@ -659,7 +659,7 @@ server_client_check_mouse_in_pane(struct window_pane *wp, int px, int py,
 				return (KEYC_MOUSE_LOCATION_SCROLLBAR_SLIDER);
 			} else /* py > sl_bottom */
 				return (KEYC_MOUSE_LOCATION_SCROLLBAR_DOWN);
-		} else if (wp->flags & PANE_FLOATING &&
+		} else if (window_pane_is_floating(wp) &&
 		    (px == wp->xoff - 1 ||
 		    py == wp->yoff - 1 ||
 		    py == wp->yoff + (int)wp->sy)) {
@@ -687,7 +687,7 @@ server_client_check_mouse_in_pane(struct window_pane *wp, int px, int py,
 			    py <= fwp->yoff + (int)fwp->sy) {
 				if (px == bdr_right)
 					break;
-				if (wp->flags & PANE_FLOATING) {
+				if (window_pane_is_floating(wp)) {
 					/* Floating pane, check left border. */
 					bdr_left = fwp->xoff - 1;
 					if (px == bdr_left)
@@ -699,12 +699,8 @@ server_client_check_mouse_in_pane(struct window_pane *wp, int px, int py,
 				bdr_bottom = fwp->yoff + fwp->sy;
 				if (py == bdr_bottom)
 					break;
-				if (wp->flags & PANE_FLOATING) {
-					/* Floating pane, check top border. */
-					bdr_top = fwp->yoff - 1;
-					if (py == bdr_top)
-						break;
-				}
+				if (py == bdr_top)
+					break;
 			}
 		}
 		if (fwp != NULL)
@@ -1590,10 +1586,7 @@ server_client_resize_timer(__unused int fd, __unused short events, void *data)
 static void
 server_client_check_pane_resize(struct window_pane *wp)
 {
-	struct window_pane_resize	*r;
-	struct window_pane_resize	*r1;
-	struct window_pane_resize	*first;
-	struct window_pane_resize	*last;
+	struct window_pane_resize	*r, *r1, *first, *last;
 	struct timeval			 tv = { .tv_usec = 250000 };
 
 	if (TAILQ_EMPTY(&wp->resize_queue))
@@ -1819,12 +1812,13 @@ server_client_reset_state(struct client *c)
 			cx = wp->xoff + (int)s->cx - (int)ox;
 			cy = wp->yoff + (int)s->cy - (int)oy;
 
+			r = screen_redraw_get_visible_ranges(wp, cx, cy, 1, NULL);
+			if (!screen_redraw_is_visible(r, cx))
+				cursor = 0;
+
 			if (status_at_line(c) == 0)
 				cy += status_line_size(c);
 		}
-		r = screen_redraw_get_visible_ranges(wp, cx, cy, 1, NULL);
-		if (!screen_redraw_is_visible(r, cx))
-			cursor = 0;
 
 		if (!cursor)
 			mode &= ~MODE_CURSOR;

@@ -1,4 +1,4 @@
-/*	$OpenBSD: rfc3779.c,v 1.15 2026/05/22 05:02:46 tb Exp $ */
+/*	$OpenBSD: rfc3779.c,v 1.17 2026/06/04 12:01:55 tb Exp $ */
 /*
  * Copyright (c) 2021 Theo Buehler <tb@openbsd.org>
  *
@@ -229,7 +229,7 @@ const struct IPAddressOrRange_test IPAddressOrRange_test_data[] = {
 			0x03, 0x04, 0x06, 0xc4, 0x01, 0x00,
 		},
 		.der_len = 14,
-		    .afi = IANA_AFI_IPV4,
+		.afi = IANA_AFI_IPV4,
 		.min = {
 			0xc4, 0x01, 0x07, 0x00,
 		},
@@ -332,8 +332,7 @@ run_IPAddressOrRange_tests(void)
 	int failed = 0;
 
 	for (i = 0; i < N_IPADDRESSORRANGE_TESTS; i++)
-		failed |=
-		    test_IPAddressOrRange(&IPAddressOrRange_test_data[i]);
+		failed |= test_IPAddressOrRange(&IPAddressOrRange_test_data[i]);
 
 	return failed;
 }
@@ -987,7 +986,7 @@ build_addr_block_test(const struct build_addr_block_test_data *test)
 			    " failed\n", __func__, test->description);
 			goto err;
 		}
-		if (test->afis[i] != afi){
+		if (test->afis[i] != afi) {
 			fprintf(stderr, "%s: \"%s\" afi[%d] mismatch. "
 			    "want: %u, got: %u\n", __func__,
 			    test->description, i, test->afis[i], afi);
@@ -1527,7 +1526,6 @@ build_asid_test(const struct ASIdentifiers_build_test *test)
 		    __func__, test->description);
 		goto err;
 	}
-
 
 	memcmp_failed = (size_t)out_len != test->der_len;
 	if (!memcmp_failed)

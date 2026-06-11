@@ -1,4 +1,4 @@
-/* $OpenBSD: ssl_tlsext.c,v 1.160 2026/05/09 11:45:50 tb Exp $ */
+/* $OpenBSD: ssl_tlsext.c,v 1.162 2026/06/08 12:05:25 tb Exp $ */
 /*
  * Copyright (c) 2016, 2017, 2019 Joel Sing <jsing@openbsd.org>
  * Copyright (c) 2017 Doug Hogan <doug@openbsd.org>
@@ -193,6 +193,10 @@ tlsext_alpn_client_process(SSL *s, uint16_t msg_type, CBS *cbs, int *alert)
 static int
 tlsext_supportedgroups_client_needs(SSL *s, uint16_t msg_type)
 {
+	/*
+	 * XXX - Don't send an empty named_group_list. For TLSv1.3 we error
+	 * earlier; for TLSv1.2 ensure we don't send the extension.
+	 */
 	return ssl_has_ecc_ciphers(s) ||
 	    (s->s3->hs.our_max_tls_version >= TLS1_3_VERSION);
 }
@@ -215,7 +219,7 @@ tlsext_supportedgroups_client_build(SSL *s, uint16_t msg_type, CBB *cbb)
 		return 0;
 
 	for (i = 0; i < groups_len; i++) {
-		if (!ssl_security_supported_group(s, groups[i]))
+		if (!tls1_check_group(s, groups[i]))
 			continue;
 		if (!CBB_add_u16(&grouplist, groups[i]))
 			return 0;
@@ -381,6 +385,8 @@ tlsext_ecpf_process(SSL *s, uint16_t msg_type, CBS *cbs, int *alert)
 		return 0;
 	if (CBS_len(&ecpf) == 0)
 		return 0;
+
+	/* XXX - tighten this to reject anything but uncompressed format? */
 
 	/* Must contain uncompressed (0) - RFC 8422, section 5.1.2. */
 	if (!CBS_contains_zero_byte(&ecpf)) {

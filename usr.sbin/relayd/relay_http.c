@@ -1,4 +1,4 @@
-/*	$OpenBSD: relay_http.c,v 1.98 2026/05/19 05:06:41 rsadowski Exp $	*/
+/*	$OpenBSD: relay_http.c,v 1.100 2026/06/03 20:00:34 kirill Exp $	*/
 
 /*
  * Copyright (c) 2006 - 2016 Reyk Floeter <reyk@openbsd.org>
@@ -162,6 +162,7 @@ relay_httpdesc_free(struct http_descriptor *desc)
 	desc->query_val = NULL;
 	kv_purge(&desc->http_headers);
 	desc->http_lastheader = NULL;
+	desc->http_cl = NULL;
 }
 
 static int
@@ -261,23 +262,17 @@ relay_read_http(struct bufferevent *bev, void *arg)
 			continue;
 		}
 
-		/* Multiline headers wrap with a space or tab. */
+		/*
+		 * RFC 9112 section 5.2 permits unconditional rejection.
+		 * Obs-fold creates parser differentials between intermediaries
+		 * and backends.
+		 */
 		if (*line == ' ' || *line == '\t') {
-			if (cre->line == 2) {
-				/* First header line cannot start with space. */
+			if (cre->dir == RELAY_DIR_RESPONSE)
+				relay_abort_http(con, 502, "Bad Gateway", 0);
+			else
 				relay_abort_http(con, 400, "malformed", 0);
-				goto abort;
-			}
-
-			/* Append line to the last header, if present */
-			if (kv_extend(&desc->http_headers,
-			    desc->http_lastheader, line) == NULL) {
-				free(line);
-				goto fail;
-			}
-
-			free(line);
-			continue;
+			goto abort;
 		}
 
 		/* Process the last complete header line. */
@@ -337,6 +332,10 @@ relay_read_http(struct bufferevent *bev, void *arg)
 						    errstr, 0);
 						goto abort;
 					}
+					desc->http_cl = desc->http_lastheader;
+					if (desc->http_cl->kv_parent != NULL)
+						desc->http_cl =
+						    desc->http_cl->kv_parent;
 					break;
 				}
 				/*
@@ -440,6 +439,18 @@ relay_read_http(struct bufferevent *bev, void *arg)
 		if (action != RES_PASS) {
 			relay_abort_http(con, 403, "Forbidden", con->se_label);
 			return;
+		}
+
+		/*
+		 * RFC 9112 section 6.1 requires an intermediary that
+		 * forwards a message with Transfer-Encoding to first
+		 * remove Content-Length. relayd keeps chunked framing,
+		 * so strip Content-Length before header emission.
+		 */
+		if (desc->http_chunked && desc->http_cl != NULL) {
+			kv_delete(&desc->http_headers, desc->http_cl);
+			desc->http_cl = NULL;
+			desc->http_lastheader = NULL;
 		}
 
 		/*
@@ -820,6 +831,7 @@ relay_reset_http(struct ctl_relay_event *cre)
 	relay_httpdesc_free(desc);
 	desc->http_method = 0;
 	desc->http_chunked = 0;
+	desc->http_cl = NULL;
 	cre->headerlen = 0;
 	cre->line = 0;
 	cre->done = 0;

@@ -108,7 +108,7 @@ ispi_pci_attach(struct device *parent, struct device *self, void *aux)
 	sc->sc_caps = 0;
 	if (sc->sc_vers == SPI_SUNRISEPOINT) {
 		/*
-		 * sunrise point supports capability validation 
+		 * sunrise point supports capability validation
 		 * and includes a dedicated reset register
 		 */
 

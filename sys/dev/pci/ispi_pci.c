@@ -122,9 +122,8 @@ ispi_pci_attach(struct device *parent, struct device *self, void *aux)
 		}
 
 		/* un-reset - page 958 */
-		if (sc->sc_vers == SPI_SUNRISEPOINT)
-			bus_space_write_4(sc->sc_iot, sc->sc_ioh, LPSS_RESETS,
-				(LPSS_RESETS_FUNC | LPSS_RESETS_IDMA));
+		bus_space_write_4(sc->sc_iot, sc->sc_ioh, LPSS_RESETS,
+			(LPSS_RESETS_FUNC | LPSS_RESETS_IDMA));
 	}
 
 	/* install interrupt handler */

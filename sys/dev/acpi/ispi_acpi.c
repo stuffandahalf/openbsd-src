@@ -75,6 +75,7 @@ ispi_acpi_attach(struct device *parent, struct device *self, void *aux)
 
 	sc->sc_acpi = (struct acpi_softc *)parent;
 	sc->sc_devnode = aa->aaa_node;
+	sc->sc_vers = SPI_SUNRISEPOINT;
 	rw_init(&sc->sc_buslock, sc->sc_dev.dv_xname);
 
 	printf(": %s", sc->sc_devnode->name);

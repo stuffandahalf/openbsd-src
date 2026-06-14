@@ -1,4 +1,4 @@
-/* $OpenBSD: window.c,v 1.334 2026/06/10 16:03:14 nicm Exp $ */
+/* $OpenBSD: window.c,v 1.336 2026/06/14 19:31:37 nicm Exp $ */
 
 /*
  * Copyright (c) 2007 Nicholas Marriott <nicholas.marriott@gmail.com>
@@ -627,7 +627,7 @@ window_get_active_at(struct window *w, u_int x, u_int y)
 	int			 pane_status, xoff, yoff;
 	u_int			 sx, sy;
 
-	pane_status = options_get_number(w->options, "pane-border-status");
+	pane_status = window_get_pane_status(w);
 
 	if (pane_status == PANE_STATUS_TOP) {
 		/*
@@ -635,10 +635,12 @@ window_get_active_at(struct window *w, u_int x, u_int y)
 		 * bottom border.
 		 */
 		TAILQ_FOREACH(wp, &w->z_index, zentry) {
-			if (!window_pane_visible(wp) || window_pane_is_floating(wp))
+			if (!window_pane_visible(wp) ||
+			    window_pane_is_floating(wp))
 				continue;
 
-			window_pane_full_size_offset(wp, &xoff, &yoff, &sx, &sy);
+			window_pane_full_size_offset(wp, &xoff, &yoff, &sx,
+			    &sy);
 			if ((int)x < xoff || x > xoff + sx)
 				continue;
 			if ((int)y == yoff - 1)
@@ -685,7 +687,7 @@ window_find_string(struct window *w, const char *s)
 	x = w->sx / 2;
 	y = w->sy / 2;
 
-	status = options_get_number(w->options, "pane-border-status");
+	status = window_get_pane_status(w);
 	if (status == PANE_STATUS_TOP)
 		top++;
 	else if (status == PANE_STATUS_BOTTOM)
@@ -1112,9 +1114,6 @@ window_pane_wait_finish(struct window_pane *wp)
 static void
 window_pane_destroy(struct window_pane *wp)
 {
-	struct window_pane_resize	*r;
-	struct window_pane_resize	*r1;
-
 	window_pane_wait_finish(wp);
 
 	window_pane_reset_mode_all(wp);
@@ -1140,10 +1139,7 @@ window_pane_destroy(struct window_pane *wp)
 		event_del(&wp->resize_timer);
 	if (event_initialized(&wp->sync_timer))
 		event_del(&wp->sync_timer);
-	TAILQ_FOREACH_SAFE(r, &wp->resize_queue, entry, r1) {
-		TAILQ_REMOVE(&wp->resize_queue, r, entry);
-		free(r);
-	}
+	window_pane_clear_resizes(wp, NULL);
 
 	RB_REMOVE(window_pane_tree, &all_window_panes, wp);
 
@@ -1209,6 +1205,19 @@ window_pane_set_event(struct window_pane *wp)
 	wp->ictx = input_init(wp, wp->event, &wp->palette, NULL);
 
 	bufferevent_enable(wp->event, EV_READ|EV_WRITE);
+}
+
+void
+window_pane_clear_resizes(struct window_pane *wp, struct window_pane_resize *except)
+{
+	struct window_pane_resize	*r, *r1;
+
+	TAILQ_FOREACH_SAFE(r, &wp->resize_queue, entry, r1) {
+		if (r == except)
+			continue;
+		TAILQ_REMOVE(&wp->resize_queue, r, entry);
+		free(r);
+	}
 }
 
 void
@@ -1537,7 +1546,7 @@ window_pane_find_up(struct window_pane *wp)
 	if (wp == NULL)
 		return (NULL);
 	w = wp->window;
-	status = options_get_number(w->options, "pane-border-status");
+	status = window_get_pane_status(w);
 
 	list = NULL;
 	size = 0;
@@ -1598,7 +1607,7 @@ window_pane_find_down(struct window_pane *wp)
 	if (wp == NULL)
 		return (NULL);
 	w = wp->window;
-	status = options_get_number(w->options, "pane-border-status");
+	status = window_get_pane_status(w);
 
 	list = NULL;
 	size = 0;
@@ -2114,21 +2123,19 @@ window_pane_send_theme_update(struct window_pane *wp)
 }
 
 struct style_range *
-window_pane_border_status_get_range(struct window_pane *wp, u_int x, u_int y)
+window_pane_status_get_range(struct window_pane *wp, u_int x, u_int y)
 {
 	struct style_ranges	*srs;
 	struct window		*w;
-	struct options		*wo;
 	u_int			 line;
 	int			 pane_status;
 
 	if (wp == NULL)
 		return (NULL);
 	w = wp->window;
-	wo = w->options;
 	srs = &wp->border_status_line.ranges;
 
-	pane_status = options_get_number(wo, "pane-border-status");
+	pane_status = window_get_pane_status(w);
 	if (pane_status == PANE_STATUS_TOP)
 		line = wp->yoff - 1;
 	else if (pane_status == PANE_STATUS_BOTTOM)
@@ -2141,6 +2148,12 @@ window_pane_border_status_get_range(struct window_pane *wp, u_int x, u_int y)
 	 * the stored bounds of the range.
 	 */
 	return (style_ranges_get_range(srs, x - wp->xoff - 2));
+}
+
+int
+window_get_pane_status(struct window *w)
+{
+       return (options_get_number(w->options, "pane-border-status"));
 }
 
 int

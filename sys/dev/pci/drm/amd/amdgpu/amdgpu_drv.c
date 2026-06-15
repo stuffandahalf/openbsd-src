@@ -3806,7 +3806,13 @@ amdgpu_attachhook(struct device *self)
 
 	pci_set_drvdata(pdev, dev);
 
+	amdgpu_init_debug_options(adev);
+
 	r = amdgpu_driver_load_kms(adev, adev->flags);
+	if (r)
+		goto out;
+
+	r = drm_dev_register(dev, adev->flags);
 	if (r)
 		goto out;
 
@@ -3817,12 +3823,6 @@ amdgpu_attachhook(struct device *self)
 	if (adev->mode_info.mode_config_initialized &&
 	    !list_empty(&adev_to_drm(adev)->mode_config.connector_list)) {
 		const struct drm_format_info *format;
-
-		/*
-		 * in linux via amdgpu_pci_probe -> drm_dev_register
-		 * must be before drm_fbdev_generic_setup()
-		 */
-		drm_dev_register(dev, adev->flags);
 
 		/* OpenBSD specific backlight property on connector */
 		amdgpu_init_backlight(adev);

@@ -1,4 +1,4 @@
-/*	$OpenBSD: relayd.h,v 1.280 2026/06/03 19:26:56 rsadowski Exp $	*/
+/*	$OpenBSD: relayd.h,v 1.286 2026/06/14 08:57:43 rsadowski Exp $	*/
 
 /*
  * Copyright (c) 2006 - 2016 Reyk Floeter <reyk@openbsd.org>
@@ -930,12 +930,6 @@ struct imsgev {
 	short			 events;
 };
 
-#define IMSG_SIZE_CHECK(imsg, p) do {				\
-	if (IMSG_DATA_SIZE(imsg) < sizeof(*p))			\
-		fatalx("bad length imsg received");		\
-} while (0)
-#define IMSG_DATA_SIZE(imsg)	((imsg)->hdr.len - IMSG_HEADER_SIZE)
-
 struct ctl_conn {
 	TAILQ_ENTRY(ctl_conn)	 entry;
 	u_int8_t		 flags;
@@ -1154,7 +1148,7 @@ int	 control_init(struct privsep *, struct control_sock *);
 int	 control_listen(struct control_sock *);
 void	 control_cleanup(struct control_sock *);
 void	 control_dispatch_imsg(int, short, void *);
-void	 control_imsg_forward(struct privsep *ps, struct imsg *);
+void	 control_imsg_forward(struct imsg *);
 struct ctl_conn	*
 	 control_connbyfd(int);
 
@@ -1292,6 +1286,7 @@ void	 script_done(struct relayd *, struct ctl_script *);
 int	 script_exec(struct relayd *, struct ctl_script *);
 
 /* ssl.c */
+void	 ssl_error(const char *);
 char	*ssl_load_key(struct relayd *, const char *, off_t *, char *);
 uint8_t *ssl_update_certificate(const uint8_t *, size_t, EVP_PKEY *,
 	    EVP_PKEY *, X509 *, size_t *);
@@ -1342,8 +1337,7 @@ void		 imsg_event_add(struct imsgev *);
 int		 imsg_compose_event(struct imsgev *, u_int16_t, u_int32_t,
 		    pid_t, int, void *, u_int16_t);
 void		 socket_rlimit(int);
-char		*get_string(u_int8_t *, size_t);
-void		*get_data(u_int8_t *, size_t);
+void		*get_data(struct ibuf *, size_t);
 int		 sockaddr_cmp(struct sockaddr *, struct sockaddr *, int);
 struct in6_addr *prefixlen2mask6(u_int8_t, u_int32_t *);
 u_int32_t	 prefixlen2mask(u_int8_t);
@@ -1422,8 +1416,8 @@ int	 proc_composev_imsg(struct privsep *, enum privsep_procid, int,
 	    u_int16_t, u_int32_t, int, const struct iovec *, int);
 int	 proc_composev(struct privsep *, enum privsep_procid,
 	    uint16_t, const struct iovec *, int);
-int	 proc_forward_imsg(struct privsep *, struct imsg *,
-	    enum privsep_procid, int);
+void	proc_forward_imsg(struct privsep *, struct imsg *,
+	    enum privsep_procid);
 struct imsgbuf *
 	 proc_ibuf(struct privsep *, enum privsep_procid, int);
 struct imsgev *

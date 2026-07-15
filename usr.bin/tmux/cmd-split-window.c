@@ -1,4 +1,4 @@
-/* $OpenBSD: cmd-split-window.c,v 1.131 2026/06/10 16:03:14 nicm Exp $ */
+/* $OpenBSD: cmd-split-window.c,v 1.133 2026/06/13 18:30:16 nicm Exp $ */
 
 /*
  * Copyright (c) 2009 Nicholas Marriott <nicholas.marriott@gmail.com>
@@ -120,7 +120,7 @@ cmd_split_window_exec(struct cmd *self, struct cmdq_item *item)
 	else
 		lc = layout_get_tiled_cell(item, args, w, wp, flags, &cause);
 	if (cause != NULL) {
-		cmdq_error(item, "size or position %s", cause);
+		cmdq_error(item, "%s", cause);
 		free(cause);
 		return (CMD_RETURN_ERROR);
 	}
@@ -190,10 +190,11 @@ cmd_split_window_exec(struct cmd *self, struct cmdq_item *item)
 	}
 	if (args_has(args, 'k') || args_has(args, 'm')) {
 		options_set_number(new_wp->options, "remain-on-exit", 3);
-		if (args_has(args, 'm'))
+		if (args_has(args, 'm')) {
 			options_set_string(new_wp->options,
-				"remain-on-exit-format",
-				0, "%s", args_get(args, 'm'));
+			    "remain-on-exit-format", 0, "%s",
+			    args_get(args, 'm'));
+		}
 	}
 	if (args_has(args, 'T')) {
 		title = format_single_from_target(item, args_get(args, 'T'));

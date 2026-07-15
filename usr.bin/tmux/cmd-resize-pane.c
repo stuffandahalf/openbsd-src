@@ -1,4 +1,4 @@
-/* $OpenBSD: cmd-resize-pane.c,v 1.56 2026/06/11 10:16:19 nicm Exp $ */
+/* $OpenBSD: cmd-resize-pane.c,v 1.58 2026/06/14 19:31:37 nicm Exp $ */
 
 /*
  * Copyright (c) 2009 Nicholas Marriott <nicholas.marriott@gmail.com>
@@ -41,7 +41,7 @@ const struct cmd_entry cmd_resize_pane_entry = {
 	.alias = "resizep",
 
 	.args = { "D::L::MR::Tt:U::x:y:Z", 0, 1, NULL },
-	.usage = "[-MTZ] [-U lines] [-D lines] [-L columns] [-R columns] "
+	.usage = "[-MTZ] [-D lines] [-L columns] [-R columns] [-U lines] "
 		 "[-x width] [-y height] " CMD_TARGET_PANE_USAGE,
 
 	.target = { 't', CMD_FIND_PANE, 0 },
@@ -118,7 +118,7 @@ cmd_resize_pane_exec(struct cmd *self, struct cmdq_item *item)
 			free(cause);
 			return (CMD_RETURN_ERROR);
 		}
-		status = options_get_number(w->options, "pane-border-status");
+		status = window_get_pane_status(w);
 		switch (status) {
 		case PANE_STATUS_TOP:
 			if (y != INT_MAX && wp->yoff == 1)

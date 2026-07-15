@@ -26,24 +26,24 @@
 #include "if_rtw88x_pci.h"
 
 struct rtw88x_pci_softc {
-	struct rtw88x_softc	sc_sc;
+	struct rtw88x_softc				psc_sc;
 
 	/* pci bus info */
-	bus_space_tag_t					sc_st;
-	bus_space_handle_t				sc_sh;
-	bus_size_t						sc_sz;
-	bus_dma_tag_t					sc_dmat;
+	bus_space_tag_t					psc_st;
+	bus_space_handle_t				psc_sh;
+	bus_size_t						psc_sz;
+	bus_dma_tag_t					psc_dmat;
 
 	/* pci interrupt */
-	struct rwlock					sc_hwirqlock;
+	struct rwlock					psc_hwirqlock;
 
 	/* TX irq details */
-	struct rwlock					sc_irqlock;
-	uint32_t						sc_irqmask[4];
+	struct rwlock					psc_irqlock;
+	uint32_t						psc_irqmask[4];
 
 	/* RX/RX DMA ring buffers */
-	//struct rtw88x_pci_rx_ring		sc_rxrings[RTK_MAX_RX_DESC_NUM];
-	//struct rtw88x_pci_tx_ring		sc_txrings[RTK_MAX_TX_QUEUE_NUM];
+	//struct rtw88x_pci_rx_ring		psc_rxrings[RTK_MAX_RX_DESC_NUM];
+	//struct rtw88x_pci_tx_ring		psc_txrings[RTK_MAX_TX_QUEUE_NUM];
 };
 
 void rtw88x_pci_attach(struct device *, struct device *, void *);
@@ -76,20 +76,30 @@ void
 rtw88x_pci_attach(struct device *parent, struct device *self, void *aux)
 {
 	int err;
-	struct rtw88x_pci_softc *sc = (void *)self;
+	struct rtw88x_pci_softc *psc = (void *)self;
+	struct rtw88x_softc *sc = &psc->psc_sc;
 	struct pci_attach_args *pa = aux;
 	pcireg_t /*reg,*/ memtype;
 
+	switch (PCI_PRODUCT(pa->pa_id)) {
+	//case PCI_PRODUCT_REALTEK_RTL8822B:
+	case PCI_PRODUCT_REALTEK_RTL8822BE:
+		sc->sc_chipinfo = &rtw8822b_hw_spec;
+		break;
+	default:
+		return;
+	}
+
 	memtype = pci_mapreg_type(pa->pa_pc, pa->pa_tag, PCI_MAPREG_START);
-	err = pci_mapreg_map(pa, PCI_MAPREG_START, memtype, 0, &sc->sc_st,
-			&sc->sc_sh, NULL, &sc->sc_sz, 0);
+	err = pci_mapreg_map(pa, PCI_MAPREG_START, memtype, 0, &psc->psc_st,
+			&psc->psc_sh, NULL, &psc->psc_sz, 0);
 	if (err) {
 		printf("%s: can't map mem space\n", self->dv_xname);
 		return;
 	}
 
-	sc->sc_dmat = pa->pa_dmat;
-	sc->sc_irqmask[0] = IMR_HIGHDOK |
+	psc->psc_dmat = pa->pa_dmat;
+	psc->psc_irqmask[0] = IMR_HIGHDOK |
 			      IMR_MGNTDOK |
 			      IMR_BKDOK |
 			      IMR_BEDOK |
@@ -98,15 +108,15 @@ rtw88x_pci_attach(struct device *parent, struct device *self, void *aux)
 			      IMR_ROK |
 			      IMR_BCNDMAINT_E |
 			      IMR_C2HCMD;
-	sc->sc_irqmask[1] = IMR_TXFOVW;
-	sc->sc_irqmask[3] = IMR_H2CDOK;
+	psc->psc_irqmask[1] = IMR_TXFOVW;
+	psc->psc_irqmask[3] = IMR_H2CDOK;
 
-	rw_init(&sc->sc_irqlock, "rtw88x irq");
-	rw_init(&sc->sc_hwirqlock, "rtw88x hw irq");
+	rw_init(&psc->psc_irqlock, "rtw88x irq");
+	rw_init(&psc->psc_hwirqlock, "rtw88x hw irq");
 
 	/* allocate dma rings for tx/rx */
 
-	printf(": ATTACHED (%p, %lu, %lu)\n", sc->sc_st, sc->sc_sh, sc->sc_sz);
+	printf(": ATTACHED (%p, %lu, %lu)\n", psc->psc_st, psc->psc_sh, psc->psc_sz);
 	//printf("%s: ATTACHED\n", DEVNAME(sc));
 }
 

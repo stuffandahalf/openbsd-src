@@ -88,6 +88,10 @@
 #define K1_CLK_PCIE2_DBI	36
 #define K1_CLK_EMAC0_BUS	37
 #define K1_CLK_EMAC1_BUS	39
+#define K1_CLK_SDH_AXI		10
+#define K1_CLK_SDH0		11
+#define K1_CLK_SDH1		12
+#define K1_CLK_SDH2		13
 
 /* K1 APMU resets */
 #define K1_RESET_USB30_AHB	8
@@ -107,6 +111,10 @@
 #define K1_RESET_PCIE2_GLOBAL	34
 #define K1_RESET_EMAC0		35
 #define K1_RESET_EMAC1		36
+#define K1_RESET_SDH_AXI	2
+#define K1_RESET_SDH0		3
+#define K1_RESET_SDH1		4
+#define K1_RESET_SDH2		5
 
 /* K3 APBC clocks */
 #define K3_CLK_UART0		0
@@ -260,6 +268,17 @@
 #define APMU_PCIE_CLK_RES_CTRL_PORTE_K3	0x01e8
 #define APMU_EMAC0_CLK_RST_CTRL		0x03e4
 #define APMU_EMAC1_CLK_RST_CTRL		0x03ec
+#define APMU_SDH0_CLK_RES_CTRL		0x0054
+#define  APMU_SDH0_CLK_RES_CTRL_SDH_AXI	(1U << 3)
+#define  APMU_SDH0_CLK_RES_CTRL_SDH0	(1U << 4)
+#define  APMU_SDH0_CLK_RES_CTRL_SDH_AXI_RST	(1U << 0)
+#define  APMU_SDH0_CLK_RES_CTRL_SDH0_RST	(1U << 1)
+#define APMU_SDH1_CLK_RES_CTRL		0x0058
+#define  APMU_SDH1_CLK_RES_CTRL_SDH1	(1U << 4)
+#define  APMU_SDH1_CLK_RES_CTRL_SDH1_RST	(1U << 1)
+#define APMU_SDH2_CLK_RES_CTRL		0x00e0
+#define  APMU_SDH2_CLK_RES_CTRL_SDH2	(1U << 4)
+#define  APMU_SDH2_CLK_RES_CTRL_SDH2_RST	(1U << 1)
 
 #define HREAD4(sc, reg)							\
 	(bus_space_read_4((sc)->sc_iot, (sc)->sc_ioh, (reg)))
@@ -348,6 +367,10 @@ static struct smtclock k1_apmu_clocks[] = {
 	{ K1_CLK_PCIE2_DBI, APMU_PCIE_CLK_RES_CTRL_PORTC, 0 },
 	{ K1_CLK_EMAC0_BUS, APMU_EMAC0_CLK_RST_CTRL, 0 },
 	{ K1_CLK_EMAC1_BUS, APMU_EMAC1_CLK_RST_CTRL, 0 },
+	{ K1_CLK_SDH_AXI, APMU_SDH0_CLK_RES_CTRL, 3 },
+	{ K1_CLK_SDH0, APMU_SDH0_CLK_RES_CTRL, 4 },
+	{ K1_CLK_SDH1, APMU_SDH1_CLK_RES_CTRL, 4 },
+	{ K1_CLK_SDH2, APMU_SDH2_CLK_RES_CTRL, 4 },
 	{ -1 },
 };
 
@@ -369,6 +392,10 @@ static struct smtreset k1_apmu_resets[] = {
 	{ K1_RESET_PCIE2_GLOBAL, APMU_PCIE_CLK_RES_CTRL_PORTC, 8, -1 },
 	{ K1_RESET_EMAC0, APMU_EMAC0_CLK_RST_CTRL, -1, 1 },
 	{ K1_RESET_EMAC1, APMU_EMAC1_CLK_RST_CTRL, -1, 1 },
+	{ K1_RESET_SDH_AXI, APMU_SDH0_CLK_RES_CTRL, -1, 0 },
+	{ K1_RESET_SDH0, APMU_SDH0_CLK_RES_CTRL, -1, 1 },
+	{ K1_RESET_SDH1, APMU_SDH1_CLK_RES_CTRL, -1, 1 },
+	{ K1_RESET_SDH2, APMU_SDH2_CLK_RES_CTRL, -1, 1 },
 	{ -1 },
 };
 

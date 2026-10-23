@@ -166,6 +166,11 @@ device	smtpinctrl
 attach	smtpinctrl at fdt
 file	arch/riscv64/dev/smtpinctrl.c		smtpinctrl
 
+# SpacemiT SD/eMMC host controller
+device	smtsdhc: sdmmcbus, sdhc
+attach	smtsdhc at fdt
+file	arch/riscv64/dev/smtsdhc.c		smtsdhc
+
 # StarFive clock controller
 device	stfclock
 attach	stfclock at fdt

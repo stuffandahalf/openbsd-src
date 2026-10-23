@@ -81,6 +81,8 @@ smtiic*		at fdt?
 iic*		at smtiic?
 smtpmic*	at iic?
 smtpinctrl*	at fdt? early 1
+smtsdhc*	at fdt?
+sdmmc*		at smtsdhc?
 
 # StarFive SoCs
 stfclock*	at fdt? early 1
